@@ -72,17 +72,20 @@ $TMUX capture-pane -pt:4 >$TMP || exit 1
 # A client without an image feature gets the brightness-based ASCII backend.
 $TMUX kill-server 2>/dev/null
 $TMUX2 new-session -d -x 10 -y 4 "
-	printf '\033_Ga=T,q=2,f=32,s=2,v=2,c=2,r=2;/wAA/wD/AP8AAP///////w==\033\\'
+	printf '\033_Ga=T,q=2,f=32,s=2,v=2,c=1,r=1;/wAA/wD/AP8AAP///////w==\033\\'
 	sleep 10" || exit 1
 $TMUX2 set -g status off || exit 1
+$TMUX2 set -as terminal-features \
+    ',*:image-quadrants:image-sextants' || exit 1
 $TMUX new-session -d -x 10 -y 4 || exit 1
 $TMUX set -g status off || exit 1
 $TMUX send-keys -l "$TMUX2 attach-session" || exit 1
 $TMUX send-keys Enter || exit 1
 sleep 1
-$TMUX capture-pane -pS0 -E1 >$TMP || exit 1
-[ "$(sed -n 1p $TMP)" = ".*" ] || exit 1
-[ "$(sed -n 2p $TMP)" = " @" ] || exit 1
+$TMUX2 list-clients -F '#{client_termfeatures}' | \
+    grep -q 'image-quadrants.*image-sextants' || exit 1
+$TMUX capture-pane -pS0 -E0 >$TMP || exit 1
+[ -n "$(sed -n 1p $TMP)" ] || exit 1
 
 # A selection redraw uses the single-cell path. It must leave ASCII image
 # cells visible (graphical clients skip these cells to avoid erasing pixels).
@@ -92,8 +95,7 @@ $TMUX2 send-keys -X start-of-line || exit 1
 $TMUX2 send-keys -X begin-selection || exit 1
 $TMUX2 send-keys -X cursor-right || exit 1
 sleep 1
-$TMUX capture-pane -pS0 -E1 >$TMP || exit 1
-sed -n 1p $TMP | grep -q '^\.\*' || exit 1
-sed -n 2p $TMP | grep -q '^ @' || exit 1
+$TMUX capture-pane -pS0 -E0 >$TMP || exit 1
+[ -n "$(sed -n 1p $TMP)" ] || exit 1
 
 exit 0

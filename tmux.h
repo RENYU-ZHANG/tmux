@@ -1038,6 +1038,28 @@ struct style {
 };
 
 #ifdef ENABLE_IMAGES
+/* Private ACS keys used by the text image backend. */
+#define TTY_ACS_IMAGE_SHADE_LIGHT 0x80
+#define TTY_ACS_IMAGE_SHADE_MEDIUM 0x81
+#define TTY_ACS_IMAGE_SHADE_DARK 0x82
+#define TTY_ACS_IMAGE_BLOCK 0x83
+#define TTY_ACS_IMAGE_HALF_UPPER 0x84
+#define TTY_ACS_IMAGE_HALF_LOWER 0x85
+#define TTY_ACS_IMAGE_HALF_LEFT 0x86
+#define TTY_ACS_IMAGE_HALF_RIGHT 0x87
+#define TTY_ACS_IMAGE_QUADRANT_LOWER_LEFT 0x88
+#define TTY_ACS_IMAGE_QUADRANT_LOWER_RIGHT 0x89
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_LEFT 0x8a
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_LEFT_LOWER_LEFT_LOWER_RIGHT 0x8b
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_LEFT_LOWER_RIGHT 0x8c
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_LEFT_UPPER_RIGHT_LOWER_LEFT 0x8d
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_LEFT_UPPER_RIGHT_LOWER_RIGHT 0x8e
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_RIGHT 0x8f
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_RIGHT_LOWER_LEFT 0x90
+#define TTY_ACS_IMAGE_QUADRANT_UPPER_RIGHT_LOWER_LEFT_LOWER_RIGHT 0x91
+#define TTY_ACS_IMAGE_SEXTANT_FIRST 0x92
+#define TTY_ACS_IMAGE_SEXTANT_LAST 0xcd
+
 /* A protocol-neutral average of part of an image cell. RGB is premultiplied. */
 struct image_sample {
 	u_char			 red;
@@ -1067,6 +1089,7 @@ struct image {
 	size_t			 size;
 	u_char			*pixels;
 	struct image_cell	*cells; /* lazily generated text samples */
+	void			*text_data;
 
 	RB_ENTRY(image)		 entry;
 };
@@ -1773,6 +1796,10 @@ struct tty_term {
 #define TERM_VT100LIKE 0x20
 #define TERM_SIXEL 0x40
 #define TERM_KITTY 0x80
+#ifdef ENABLE_IMAGES
+#define TERM_IMAGE_QUADRANTS 0x100
+#define TERM_IMAGE_SEXTANTS 0x200
+#endif
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -3071,6 +3098,9 @@ void		 tty_default_features(int *, const char *, u_int);
 int		 tty_acs_needed(struct tty *);
 const char	*tty_acs_get(struct tty *, u_char);
 int		 tty_acs_reverse_get(struct tty *, const char *, size_t);
+#ifdef ENABLE_IMAGES
+u_char		 tty_acs_image_sextant(u_int);
+#endif
 const struct utf8_data *tty_acs_double_borders(int);
 const struct utf8_data *tty_acs_heavy_borders(int);
 const struct utf8_data *tty_acs_rounded_borders(int);
@@ -4284,6 +4314,7 @@ const struct image_cell *image_get_cell(struct image *, u_int, u_int);
 void		 image_get_text_cell(struct tty *, struct image *, u_int,
 		     u_int, const struct grid_cell *, struct grid_cell *,
 		     const struct tty_style_ctx *);
+void		 image_free_text(struct image *);
 void		 image_clear(struct screen_write_ctx *, u_int);
 #define KITTY_PARSE_ERROR -1
 #define KITTY_PARSE_OK 0

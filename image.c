@@ -265,6 +265,7 @@ image_free(u_int id)
 	RB_REMOVE(images, &images, im);
 	free(im->pixels);
 	free(im->cells);
+	image_free_text(im);
 	free(im);
 }
 
