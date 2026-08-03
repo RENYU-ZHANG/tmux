@@ -320,6 +320,36 @@ cmdq_append(struct client *c, struct cmdq_item *item)
 	return (TAILQ_LAST(&queue->list, cmdq_item_list));
 }
 
+/* Append items before the first waiting item in a client queue. */
+struct cmdq_item *
+cmdq_append_bypass(struct client *c, struct cmdq_item *item)
+{
+	struct cmdq_list	*queue = cmdq_get(c);
+	struct cmdq_item	*before, *next, *last = NULL;
+
+	TAILQ_FOREACH(before, &queue->list, entry) {
+		if (before->flags & CMDQ_WAITING)
+			break;
+	}
+	if (before == NULL)
+		return (cmdq_append(c, item));
+
+	do {
+		next = item->next;
+		item->next = NULL;
+
+		c->references++;
+		item->client = c;
+		item->queue = queue;
+		TAILQ_INSERT_BEFORE(before, item, entry);
+		log_debug("%s %s: %s", __func__, cmdq_name(c), item->name);
+
+		last = item;
+		item = next;
+	} while (item != NULL);
+	return (last);
+}
+
 /* Insert an item. */
 struct cmdq_item *
 cmdq_insert_after(struct cmdq_item *after, struct cmdq_item *item)

@@ -55,6 +55,7 @@ struct hyperlinks_uri;
 struct hyperlinks;
 struct input_ctx;
 struct job;
+struct menu;
 struct menu_data;
 struct mode_tree_data;
 struct mouse_event;
@@ -1036,6 +1037,7 @@ struct menu_item {
 struct menu {
 	const char		*title;
 	struct menu_item	*items;
+	struct menu	       **submenus;
 	u_int			 count;
 	u_int			 width;
 };
@@ -2659,6 +2661,7 @@ struct cmdq_item *cmdq_get_callback1(const char *, cmdq_cb, void *);
 struct cmdq_item *cmdq_get_error(const char *);
 struct cmdq_item *cmdq_insert_after(struct cmdq_item *, struct cmdq_item *);
 struct cmdq_item *cmdq_append(struct client *, struct cmdq_item *);
+struct cmdq_item *cmdq_append_bypass(struct client *, struct cmdq_item *);
 void printflike(4, 5) cmdq_insert_hook(struct session *, struct cmdq_item *,
 		     struct cmd_find_state *, const char *, ...);
 void		 cmdq_continue(struct cmdq_item *);
@@ -2769,6 +2772,7 @@ void	 server_client_set_key_table(struct client *, const char *);
 const char *server_client_get_key_table(struct client *);
 int	 server_client_check_nested(struct client *);
 int	 server_client_handle_key(struct client *, struct key_event *);
+void	 server_client_forward_key(struct client *, struct key_event *);
 struct client *server_client_create(int);
 int	 server_client_open(struct client *, char **);
 void	 server_client_unref(struct client *);
@@ -2995,8 +2999,8 @@ void	 screen_write_hline(struct screen_write_ctx *, u_int, int, int,
 	     enum box_lines, const struct grid_cell *);
 void	 screen_write_vline(struct screen_write_ctx *, u_int, int, int);
 void	 screen_write_menu(struct screen_write_ctx *, struct menu *, int,
-	     enum box_lines, const struct grid_cell *, const struct grid_cell *,
-	     const struct grid_cell *);
+	     u_int, u_int, enum box_lines, const struct grid_cell *,
+	     const struct grid_cell *, const struct grid_cell *);
 void	 screen_write_box(struct screen_write_ctx *, u_int, u_int,
              enum box_lines, const struct grid_cell *, const char *);
 void	 screen_write_preview(struct screen_write_ctx *, struct screen *, u_int,
@@ -3416,12 +3420,17 @@ __dead void printflike(1, 2) fatalx(const char *, ...);
 #define MENU_NOMOUSE 0x1
 #define MENU_TAB 0x2
 #define MENU_STAYOPEN 0x4
+#define MENU_CONTEXT 0x8
+#define MENU_MAX_LEVELS 16
 struct menu	*menu_create(const char *);
 void		 menu_add_items(struct menu *, const struct menu_item *,
 		    struct cmdq_item *, struct client *,
 		    struct cmd_find_state *);
 void		 menu_add_item(struct menu *, const struct menu_item *,
 		    struct cmdq_item *, struct client *,
+		    struct cmd_find_state *);
+void		 menu_add_submenu(struct menu *, const struct menu_item *,
+		    struct menu *, struct cmdq_item *, struct client *,
 		    struct cmd_find_state *);
 void		 menu_free(struct menu *);
 struct menu_data *menu_prepare(struct menu *, int, int, struct cmdq_item *,

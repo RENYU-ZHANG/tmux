@@ -33,13 +33,17 @@ static enum cmd_retval		cmd_display_menu_exec(struct cmd *,
 				    struct cmdq_item *);
 static enum cmd_retval		cmd_display_popup_exec(struct cmd *,
 				    struct cmdq_item *);
+static int			cmd_display_menu_parse_items(struct menu *,
+				    struct args *, u_int *, u_int, u_int, int,
+				    struct cmdq_item *, struct client *,
+				    struct cmd_find_state *, char **);
 
 const struct cmd_entry cmd_display_menu_entry = {
 	.name = "display-menu",
 	.alias = "menu",
 
-	.args = { "b:c:C:H:s:S:MOt:T:x:y:", 1, -1, cmd_display_menu_args_parse },
-	.usage = "[-MO] [-b border-lines] [-c target-client] "
+	.args = { "b:c:C:H:s:S:LMNOt:T:x:y:", 1, -1, cmd_display_menu_args_parse },
+	.usage = "[-LMNO] [-b border-lines] [-c target-client] "
 		 "[-C starting-choice] [-H selected-style] [-s style] "
 		 "[-S border-style] " CMD_TARGET_PANE_USAGE "[-T title] "
 		 "[-x position] [-y position] name key command ...",
@@ -71,7 +75,25 @@ static enum args_parse_type
 cmd_display_menu_args_parse(struct args *args, u_int idx, __unused char **cause)
 {
 	u_int			 i = 0;
+	int			 field = 0;
 	enum args_parse_type	 type = ARGS_PARSE_STRING;
+	const char		*value;
+
+	if (args_has(args, 'L')) {
+		while (i < idx) {
+			value = args_string(args, i++);
+			if (field == 0) {
+				if (*value != '\0' && strcmp(value, "--end") != 0)
+					field = 1;
+			} else if (field == 1)
+				field = 2;
+			else
+				field = 0;
+		}
+		if (field == 2)
+			return (ARGS_PARSE_COMMANDS_OR_STRING);
+		return (ARGS_PARSE_STRING);
+	}
 
 	for (;;) {
 		type = ARGS_PARSE_STRING;
@@ -89,6 +111,76 @@ cmd_display_menu_args_parse(struct args *args, u_int idx, __unused char **cause)
 			break;
 	}
 	return (type);
+}
+
+static int
+cmd_display_menu_parse_items(struct menu *menu, struct args *args, u_int *idx,
+    u_int count, u_int depth, int nested, struct cmdq_item *item,
+    struct client *tc, struct cmd_find_state *target, char **cause)
+{
+	struct menu_item	 menu_item;
+	struct menu		*submenu;
+	const char		*name, *key, *command;
+	u_int			 before;
+
+	while (*idx < count) {
+		submenu = NULL;
+		name = args_string(args, (*idx)++);
+		if (strcmp(name, "--end") == 0) {
+			if (!nested) {
+				*cause = xstrdup("unexpected --end");
+				return (-1);
+			}
+			return (0);
+		}
+		if (*name == '\0') {
+			menu_add_item(menu, NULL, item, tc, target);
+			continue;
+		}
+		if (count - *idx < 2) {
+			*cause = xstrdup("not enough arguments");
+			return (-1);
+		}
+		key = args_string(args, (*idx)++);
+		command = args_string(args, (*idx)++);
+
+		memset(&menu_item, 0, sizeof menu_item);
+		menu_item.name = name;
+		menu_item.key = key_string_lookup_string(key);
+		if (strcmp(command, "--submenu") == 0) {
+			if (depth + 1 >= MENU_MAX_LEVELS) {
+				*cause = xstrdup("menu nesting is too deep");
+				return (-1);
+			}
+			submenu = menu_create("");
+			if (cmd_display_menu_parse_items(submenu, args, idx, count,
+			    depth + 1, 1, item, tc, target, cause) != 0) {
+				menu_free(submenu);
+				return (-1);
+			}
+			if (submenu->count == 0) {
+				menu_free(submenu);
+				*cause = xstrdup("submenu is empty");
+				return (-1);
+			}
+			menu_item.command = NULL;
+		} else
+			menu_item.command = command;
+
+		before = menu->count;
+		if (submenu != NULL)
+			menu_add_submenu(menu, &menu_item, submenu, item, tc,
+			    target);
+		else
+			menu_add_item(menu, &menu_item, item, tc, target);
+		if (menu->count == before && submenu != NULL)
+			menu_free(submenu);
+	}
+	if (nested) {
+		*cause = xstrdup("missing --end for submenu");
+		return (-1);
+	}
+	return (0);
 }
 
 static int
@@ -115,9 +207,11 @@ cmd_display_menu_get_position(struct client *tc, struct cmdq_item *item,
 	 * bottom-left position.
 	 */
 
-	/* If the popup is too big, stop now. */
-	if (w > tty->sx || h > tty->sy)
+	/* If the popup is too wide, stop now; tall menus use a viewport. */
+	if (w > tty->sx || tty->sy < 3)
 		return (0);
+	if (h > tty->sy)
+		h = tty->sy;
 
 	/* Create format with mouse position if any. */
 	ft = format_create_from_target(item);
@@ -288,7 +382,6 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 	struct key_event	*event = cmdq_get_event(item);
 	struct client		*tc = cmdq_get_target_client(item);
 	struct menu		*menu = NULL;
-	struct menu_item	 menu_item;
 	const char		*key, *name, *value;
 	const char		*style = args_get(args, 's');
 	const char		*border_style = args_get(args, 'S');
@@ -325,25 +418,38 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 	menu = menu_create(title);
 	free(title);
 
-	for (i = 0; i != count; /* nothing */) {
-		name = args_string(args, i++);
-		if (*name == '\0') {
-			menu_add_item(menu, NULL, item, tc, target);
-			continue;
-		}
-
-		if (count - i < 2) {
-			cmdq_error(item, "not enough arguments");
+	if (args_has(args, 'L')) {
+		i = 0;
+		if (cmd_display_menu_parse_items(menu, args, &i, count, 0, 0,
+		    item, tc, target, &cause) != 0) {
+			cmdq_error(item, "%s", cause);
+			free(cause);
 			menu_free(menu);
 			return (CMD_RETURN_ERROR);
 		}
-		key = args_string(args, i++);
+	} else {
+		for (i = 0; i != count; /* nothing */) {
+			struct menu_item menu_item = { 0 };
 
-		menu_item.name = name;
-		menu_item.key = key_string_lookup_string(key);
-		menu_item.command = args_string(args, i++);
+			name = args_string(args, i++);
+			if (*name == '\0') {
+				menu_add_item(menu, NULL, item, tc, target);
+				continue;
+			}
 
-		menu_add_item(menu, &menu_item, item, tc, target);
+			if (count - i < 2) {
+				cmdq_error(item, "not enough arguments");
+				menu_free(menu);
+				return (CMD_RETURN_ERROR);
+			}
+			key = args_string(args, i++);
+
+			menu_item.name = name;
+			menu_item.key = key_string_lookup_string(key);
+			menu_item.command = args_string(args, i++);
+
+			menu_add_item(menu, &menu_item, item, tc, target);
+		}
 	}
 	if (menu == NULL) {
 		cmdq_error(item, "invalid menu arguments");
@@ -373,6 +479,8 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 
 	if (args_has(args, 'O'))
 		flags |= MENU_STAYOPEN;
+	if (args_has(args, 'N'))
+		flags |= MENU_CONTEXT;
 	if (!event->m.valid && !args_has(args, 'M'))
 		flags |= MENU_NOMOUSE;
 	if (menu_display(menu, flags, starting_choice, item, px, py, tc, lines,

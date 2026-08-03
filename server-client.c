@@ -2108,6 +2108,19 @@ out:
 	return (CMD_RETURN_NORMAL);
 }
 
+/* Queue a key as normal client input without passing it through an overlay. */
+void
+server_client_forward_key(struct client *c, struct key_event *event)
+{
+	struct key_event	*copy;
+	struct cmdq_item	*item;
+
+	copy = xmalloc(sizeof *copy);
+	memcpy(copy, event, sizeof *copy);
+	item = cmdq_get_callback(server_client_key_callback, copy);
+	cmdq_append_bypass(c, item);
+}
+
 /* Handle a key event. */
 int
 server_client_handle_key(struct client *c, struct key_event *event)

@@ -6472,7 +6472,7 @@ the default is
 .Ql y .
 .Tg menu
 .It Xo Ic display-menu
-.Op Fl OM
+.Op Fl LMNO
 .Op Fl b Ar border-lines
 .Op Fl c Ar target-client
 .Op Fl C Ar starting-choice
@@ -6585,12 +6585,33 @@ tells
 the menu should handle mouse events; by default only menus opened from mouse
 key bindings do so.
 .Pp
+.Fl N
+enables context-menu mouse handling. Pointer motion changes the highlighted
+item, a left-button press chooses the item under the pointer, and a press
+outside dismisses the menu. Releases and button drags are ignored.
+.Pp
+.Fl L
+enables nested menu arguments. A command of
+.Ql --submenu
+starts a submenu and a name of
+.Ql --end
+ends it. These strings are reserved while
+.Fl L
+is present. Menus taller than the client are shown in a scrollable viewport;
+the mouse wheel scrolls the menu under the pointer.
+.Pp
 The following keys are available in menus:
 .Bl -column "Key" "Function" -offset indent
 .It Sy "Key" Ta Sy "Function"
 .It Li "Enter" Ta "Choose selected item"
 .It Li "Up" Ta "Select previous item"
 .It Li "Down" Ta "Select next item"
+.It Li "Page Up" Ta "Move one viewport up"
+.It Li "Page Down" Ta "Move one viewport down"
+.It Li "Home" Ta "Select first item"
+.It Li "End" Ta "Select last item"
+.It Li "Right" Ta "Open submenu or choose selected item"
+.It Li "Left" Ta "Close submenu"
 .It Li "q" Ta "Exit menu"
 .El
 .Tg display
@@ -6664,6 +6685,7 @@ on
 .Ar target-client .
 A popup is a rectangular box drawn over the top of any panes.
 Panes are not updated while a popup is present.
+Mouse wheel events outside the popup are sent to the pane under the pointer.
 .Pp
 .Fl E
 closes the popup automatically when
