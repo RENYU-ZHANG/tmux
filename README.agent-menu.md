@@ -14,7 +14,9 @@ the existing flat-menu argument format.
 - `display-menu -N` selects on mouse press, ignores releases and drags, and
   dismisses on a press outside the complete menu hierarchy.
 - While a popup is open, wheel events outside its rectangle follow normal tmux
-  routing to the pane under the pointer; all other outside events are unchanged.
+  routing to the pane under the pointer without closing the popup. The usual
+  `WheelUpPane` or `WheelDownPane` binding receives the original coordinates;
+  all other outside events are unchanged.
 
 Use `-M` when a menu opened by a non-mouse key binding should also accept mouse
 input. Menus opened from a mouse binding accept mouse input automatically.

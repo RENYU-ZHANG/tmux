@@ -1823,6 +1823,7 @@ typedef void (*overlay_draw_cb)(struct client *, void *,
 typedef int (*overlay_key_cb)(struct client *, void *, struct key_event *);
 typedef void (*overlay_free_cb)(struct client *, void *);
 typedef void (*overlay_resize_cb)(struct client *, void *);
+#define OVERLAY_KEY_PASSTHROUGH 2
 struct client {
 	const char		*name;
 	struct tmuxpeer		*peer;
@@ -2772,7 +2773,6 @@ void	 server_client_set_key_table(struct client *, const char *);
 const char *server_client_get_key_table(struct client *);
 int	 server_client_check_nested(struct client *);
 int	 server_client_handle_key(struct client *, struct key_event *);
-void	 server_client_forward_key(struct client *, struct key_event *);
 struct client *server_client_create(int);
 int	 server_client_open(struct client *, char **);
 void	 server_client_unref(struct client *);

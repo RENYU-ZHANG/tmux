@@ -490,10 +490,8 @@ popup_key_cb(struct client *c, void *data, struct key_event *event)
 
 	if (KEYC_IS_MOUSE(event->key) && MOUSE_WHEEL(m->b) &&
 	    (m->x < pd->px || m->x > pd->px + pd->sx - 1 ||
-	    m->y < pd->py || m->y > pd->py + pd->sy - 1)) {
-		server_client_forward_key(c, event);
-		return (0);
-	}
+	    m->y < pd->py || m->y > pd->py + pd->sy - 1))
+		return (OVERLAY_KEY_PASSTHROUGH);
 
 	if (pd->md != NULL) {
 		if (menu_key_cb(c, pd->md, event) == 1) {

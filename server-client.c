@@ -2108,25 +2108,13 @@ out:
 	return (CMD_RETURN_NORMAL);
 }
 
-/* Queue a key as normal client input without passing it through an overlay. */
-void
-server_client_forward_key(struct client *c, struct key_event *event)
-{
-	struct key_event	*copy;
-	struct cmdq_item	*item;
-
-	copy = xmalloc(sizeof *copy);
-	memcpy(copy, event, sizeof *copy);
-	item = cmdq_get_callback(server_client_key_callback, copy);
-	cmdq_append_bypass(c, item);
-}
-
 /* Handle a key event. */
 int
 server_client_handle_key(struct client *c, struct key_event *event)
 {
 	struct session		*s = c->session;
 	struct cmdq_item	*item;
+	int			 bypass_waiting = 0;
 
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
@@ -2150,6 +2138,9 @@ server_client_handle_key(struct client *c, struct key_event *event)
 			case 1:
 				server_client_clear_overlay(c);
 				return (0);
+			case OVERLAY_KEY_PASSTHROUGH:
+				bypass_waiting = 1;
+				goto queue_key;
 			}
 		}
 		server_client_clear_overlay(c);
@@ -2161,10 +2152,15 @@ server_client_handle_key(struct client *c, struct key_event *event)
 
 	/*
 	 * Add the key to the queue so it happens after any commands queued by
-	 * previous keys.
+	 * previous keys. An overlay pass-through must run before the waiting
+	 * overlay command or it would not be handled until the overlay closed.
 	 */
+queue_key:
 	item = cmdq_get_callback(server_client_key_callback, event);
-	cmdq_append(c, item);
+	if (bypass_waiting)
+		cmdq_append_bypass(c, item);
+	else
+		cmdq_append(c, item);
 	return (1);
 }
 
