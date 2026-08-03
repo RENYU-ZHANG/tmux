@@ -1081,8 +1081,12 @@ struct image_cell {
 struct image {
 	u_int			 id;
 	u_int			 references;
+	u_int			 parent_id;
+	u_int			 source_id;
 	u_int			 width;
 	u_int			 height;
+	u_int			 canvas_width;
+	u_int			 canvas_height;
 	u_int			 sx;
 	u_int			 sy;
 	size_t			 stride;
@@ -4285,7 +4289,10 @@ char		*regsub(const char *, const char *, const char *, int);
 
 #ifdef ENABLE_IMAGES
 /* image.c */
-struct image	*image_create(u_int, u_int, u_int, u_int, u_char *);
+struct image	*image_create(u_int, u_int, u_int, u_int, u_int, u_int,
+		     u_char *);
+struct image	*image_create_view(struct image *, u_int, u_int, u_int,
+		     u_int, u_int, u_int, u_int, u_int);
 struct image	*image_find(u_int);
 void		 image_ref(u_int);
 void		 image_free(u_int);

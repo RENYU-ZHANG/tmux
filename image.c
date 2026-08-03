@@ -132,14 +132,19 @@ image_sample(struct image *im, uint64_t sample_x, uint64_t sample_y,
 	uint64_t	 brightness = 0, count = 0;
 	u_int		 x, y, x0, x1, y0, y1;
 
-	x0 = sample_x * im->width / sample_columns;
-	x1 = (sample_x + 1) * im->width / sample_columns;
-	y0 = sample_y * im->height / sample_rows;
-	y1 = (sample_y + 1) * im->height / sample_rows;
+	x0 = sample_x * im->canvas_width / sample_columns;
+	x1 = ((sample_x + 1) * im->canvas_width + sample_columns - 1) /
+	    sample_columns;
+	y0 = sample_y * im->canvas_height / sample_rows;
+	y1 = ((sample_y + 1) * im->canvas_height + sample_rows - 1) /
+	    sample_rows;
 	if (x1 <= x0)
 		x1 = x0 + 1;
 	if (y1 <= y0)
 		y1 = y0 + 1;
+	count = (uint64_t)(x1 - x0) * (y1 - y0);
+	if (x0 >= im->width || y0 >= im->height)
+		return;
 	if (x1 > im->width)
 		x1 = im->width;
 	if (y1 > im->height)
@@ -155,7 +160,6 @@ image_sample(struct image *im, uint64_t sample_x, uint64_t sample_y,
 			brightness += ((2126ULL * pixel[0] +
 			    7152ULL * pixel[1] + 722ULL * pixel[2]) / 10000) *
 			    pixel[3] / 255;
-			count++;
 		}
 	}
 	if (count == 0)
@@ -205,17 +209,11 @@ image_find(u_int id)
 	return (RB_FIND(images, &images, &find));
 }
 
-struct image *
-image_create(u_int width, u_int height, u_int sx, u_int sy, u_char *pixels)
+static struct image *
+image_create1(u_int width, u_int height, u_int canvas_width,
+    u_int canvas_height, u_int sx, u_int sy, size_t stride, u_char *pixels)
 {
 	struct image	*im;
-
-	if (width == 0 || height == 0 || sx == 0 || sy == 0 || pixels == NULL)
-		return (NULL);
-	if ((uint64_t)width * height * 4 > SIZE_MAX)
-		return (NULL);
-	if ((uint64_t)sx * sy > SIZE_MAX / sizeof *im->cells)
-		return (NULL);
 
 	im = xcalloc(1, sizeof *im);
 	do {
@@ -225,17 +223,63 @@ image_create(u_int width, u_int height, u_int sx, u_int sy, u_char *pixels)
 	} while (image_find(im->id) != NULL);
 
 	im->references = 1;
+	im->source_id = im->id;
 	im->width = width;
 	im->height = height;
+	im->canvas_width = canvas_width;
+	im->canvas_height = canvas_height;
 	im->sx = sx;
 	im->sy = sy;
-	im->stride = (size_t)width * 4;
-	im->size = im->stride * height;
+	im->stride = stride;
+	im->size = (size_t)width * height * 4;
 	im->pixels = pixels;
 
 	RB_INSERT(images, &images, im);
-	log_debug("%s: image %u is %ux%u pixels, %ux%u cells", __func__,
-	    im->id, width, height, sx, sy);
+	log_debug("%s: image %u is %ux%u pixels on %ux%u canvas, "
+	    "%ux%u cells", __func__, im->id, width, height, canvas_width,
+	    canvas_height, sx, sy);
+	return (im);
+}
+
+struct image *
+image_create(u_int width, u_int height, u_int canvas_width,
+    u_int canvas_height, u_int sx, u_int sy, u_char *pixels)
+{
+	struct image	*im;
+
+	if (width == 0 || height == 0 || canvas_width < width ||
+	    canvas_height < height || sx == 0 || sy == 0 || pixels == NULL)
+		return (NULL);
+	if ((uint64_t)width * height * 4 > SIZE_MAX)
+		return (NULL);
+	if ((uint64_t)sx * sy > SIZE_MAX / sizeof *im->cells)
+		return (NULL);
+	im = image_create1(width, height, canvas_width, canvas_height, sx, sy,
+	    (size_t)width * 4, pixels);
+	return (im);
+}
+
+/* Create an immutable rectangular view without copying its source pixels. */
+struct image *
+image_create_view(struct image *source, u_int x, u_int y, u_int width,
+    u_int height, u_int canvas_width, u_int canvas_height, u_int sx, u_int sy)
+{
+	struct image	*im;
+
+	if (source == NULL || x >= source->width || y >= source->height ||
+	    width == 0 || width > source->width - x || height == 0 ||
+	    height > source->height - y || canvas_width < width ||
+	    canvas_height < height || sx == 0 || sy == 0)
+		return (NULL);
+	if ((uint64_t)sx * sy > SIZE_MAX / sizeof *im->cells)
+		return (NULL);
+
+	im = image_create1(width, height, canvas_width, canvas_height, sx, sy,
+	    source->stride, source->pixels + (size_t)y * source->stride +
+	    (size_t)x * 4);
+	im->parent_id = source->id;
+	im->source_id = source->source_id;
+	image_ref(source->id);
 	return (im);
 }
 
@@ -263,7 +307,10 @@ image_free(u_int id)
 
 	log_debug("%s: freeing image %u", __func__, id);
 	RB_REMOVE(images, &images, im);
-	free(im->pixels);
+	if (im->parent_id == 0)
+		free(im->pixels);
+	else
+		image_free(im->parent_id);
 	free(im->cells);
 	image_free_text(im);
 	free(im);
@@ -306,14 +353,16 @@ image_get_pixel_rectangle(const struct image *im, u_int x, u_int y,
 	if (height > im->sy - y)
 		height = im->sy - y;
 
-	*px = (uint64_t)x * im->width / im->sx;
-	*py = (uint64_t)y * im->height / im->sy;
-	x1 = (uint64_t)(x + width) * im->width / im->sx;
-	y1 = (uint64_t)(y + height) * im->height / im->sy;
-	if (*px >= im->width)
-		*px = im->width - 1;
-	if (*py >= im->height)
-		*py = im->height - 1;
+	*px = (uint64_t)x * im->canvas_width / im->sx;
+	*py = (uint64_t)y * im->canvas_height / im->sy;
+	x1 = ((uint64_t)(x + width) * im->canvas_width + im->sx - 1) /
+	    im->sx;
+	y1 = ((uint64_t)(y + height) * im->canvas_height + im->sy - 1) /
+	    im->sy;
+	if (*px >= im->width || *py >= im->height) {
+		*px = *py = 0;
+		return;
+	}
 	if (x1 <= *px)
 		x1 = *px + 1;
 	if (y1 <= *py)
@@ -403,13 +452,17 @@ image_clear(struct screen_write_ctx *ctx, u_int id)
 	struct screen		*s = ctx->s;
 	struct grid		*gd = s->grid;
 	struct grid_cell	 gc;
+	struct image		*im;
 	u_int			 x, y;
 
 	for (y = 0; y < gd->hsize + gd->sy; y++) {
 		for (x = 0; x < gd->sx; x++) {
 			grid_get_cell(gd, x, y, &gc);
-			if ((gc.flags & GRID_FLAG_IMAGE) &&
-			    (id == 0 || gc.image_id == id)) {
+			im = NULL;
+			if (gc.flags & GRID_FLAG_IMAGE)
+				im = image_find(gc.image_id);
+			if (im != NULL && (id == 0 || gc.image_id == id ||
+			    im->source_id == id)) {
 				if (y >= gd->hsize)
 					image_damage_area(ctx, x, y - gd->hsize,
 					    1, 1);
