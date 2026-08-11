@@ -693,7 +693,8 @@ screen_write_vline(struct screen_write_ctx *ctx, u_int ny, int top, int bottom)
 /* Draw a menu on screen. */
 void
 screen_write_menu(struct screen_write_ctx *ctx, struct menu *menu, int choice,
-    u_int top, u_int visible, enum box_lines lines,
+    u_int top, u_int visible, int arrow_up, int arrow_down,
+    enum box_lines lines,
     const struct grid_cell *menu_gc, const struct grid_cell *border_gc,
     const struct grid_cell *choice_gc)
 {
@@ -711,7 +712,20 @@ screen_write_menu(struct screen_write_ctx *ctx, struct menu *menu, int choice,
 	screen_write_box(ctx, menu->width + 4, visible + 2, lines,
 	    border_gc, menu->title);
 
-	for (row = 0, i = top; row < visible && i < menu->count;
+	row = 0;
+	if (arrow_up) {
+		if (choice == MENU_CHOICE_UP)
+			gc = choice_gc;
+		screen_write_cursormove(ctx, cx + 1, cy + 1, 0);
+		for (j = 0; j < width + 2; j++)
+			screen_write_putc(ctx, gc, ' ');
+		screen_write_cursormove(ctx, cx + 2, cy + 1, 0);
+		format_draw(ctx, gc, width, "#[align=centre]▲", NULL, 0);
+		gc = &default_gc;
+		row++;
+	}
+
+	for (i = top; row < visible - arrow_down && i < menu->count;
 	    row++, i++) {
 		name = menu->items[i].name;
 		if (name == NULL) {
@@ -739,13 +753,14 @@ screen_write_menu(struct screen_write_ctx *ctx, struct menu *menu, int choice,
 		format_draw(ctx, gc, width, name, NULL, 0);
 		gc = &default_gc;
 	}
-	if (top != 0) {
-		screen_write_cursormove(ctx, cx + width + 2, cy + 1, 0);
-		screen_write_putc(ctx, border_gc, '^');
-	}
-	if (top + visible < menu->count) {
-		screen_write_cursormove(ctx, cx + width + 2, cy + visible, 0);
-		screen_write_putc(ctx, border_gc, 'v');
+	if (arrow_down) {
+		if (choice == MENU_CHOICE_DOWN)
+			gc = choice_gc;
+		screen_write_cursormove(ctx, cx + 1, cy + visible, 0);
+		for (j = 0; j < width + 2; j++)
+			screen_write_putc(ctx, gc, ' ');
+		screen_write_cursormove(ctx, cx + 2, cy + visible, 0);
+		format_draw(ctx, gc, width, "#[align=centre]▼", NULL, 0);
 	}
 
 	screen_write_set_cursor(ctx, cx, cy);

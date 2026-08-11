@@ -6,11 +6,17 @@ the existing flat-menu argument format.
 ## Features
 
 - Menus taller than the client use a viewport instead of failing to open.
+- A long viewport shows `▲` as its first row only when content is hidden
+  above and `▼` as its last row only when content is hidden below. Pressing an
+  arrow scrolls one row without dismissing the menu; choosing a normal leaf
+  keeps the usual dismissal behavior.
 - The mouse wheel scrolls the menu under the pointer by three rows.
 - Page Up, Page Down, Home, End, Up, and Down keep the selection visible.
 - `display-menu -L` accepts nested menu data and renders cascading submenus.
 - Right or Enter opens a submenu, Left returns to its parent, and context-menu
   pointer motion opens the submenu under the pointer.
+- Each parent has one visible child branch. Opening a sibling first closes and
+  repaints the previous child and all of its descendants.
 - `display-menu -N` selects on mouse press, ignores releases and drags, and
   dismisses on a press outside the complete menu hierarchy.
 - While a popup is open, wheel events outside its rectangle follow normal tmux

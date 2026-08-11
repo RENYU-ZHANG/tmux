@@ -6569,7 +6569,13 @@ Or a format, which is expanded including the following additional variables:
 .El
 .Pp
 Each menu consists of items followed by a key shortcut shown in brackets.
-If the menu is too large to fit on the terminal, it is not displayed.
+If the menu is taller than the terminal, it is displayed in a viewport.
+The first row is
+.Ql ▲
+only while content is hidden above and the last row is
+.Ql ▼
+only while content is hidden below. Choosing an arrow scrolls one row without
+closing the menu; the mouse wheel scrolls three rows.
 Pressing the key shortcut chooses the corresponding item.
 If the mouse is enabled and the menu is opened from a mouse key binding,
 releasing the mouse button with an item selected chooses that item and
@@ -6597,8 +6603,8 @@ starts a submenu and a name of
 .Ql --end
 ends it. These strings are reserved while
 .Fl L
-is present. Menus taller than the client are shown in a scrollable viewport;
-the mouse wheel scrolls the menu under the pointer.
+is present. Opening a submenu closes any child branch already open from a
+sibling at the same parent level before drawing the replacement.
 .Pp
 The following keys are available in menus:
 .Bl -column "Key" "Function" -offset indent

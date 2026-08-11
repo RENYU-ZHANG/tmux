@@ -2999,7 +2999,7 @@ void	 screen_write_hline(struct screen_write_ctx *, u_int, int, int,
 	     enum box_lines, const struct grid_cell *);
 void	 screen_write_vline(struct screen_write_ctx *, u_int, int, int);
 void	 screen_write_menu(struct screen_write_ctx *, struct menu *, int,
-	     u_int, u_int, enum box_lines, const struct grid_cell *,
+	     u_int, u_int, int, int, enum box_lines, const struct grid_cell *,
 	     const struct grid_cell *, const struct grid_cell *);
 void	 screen_write_box(struct screen_write_ctx *, u_int, u_int,
              enum box_lines, const struct grid_cell *, const char *);
@@ -3422,6 +3422,9 @@ __dead void printflike(1, 2) fatalx(const char *, ...);
 #define MENU_STAYOPEN 0x4
 #define MENU_CONTEXT 0x8
 #define MENU_MAX_LEVELS 16
+#define MENU_CHOICE_NONE -1
+#define MENU_CHOICE_UP -2
+#define MENU_CHOICE_DOWN -3
 struct menu	*menu_create(const char *);
 void		 menu_add_items(struct menu *, const struct menu_item *,
 		    struct cmdq_item *, struct client *,
