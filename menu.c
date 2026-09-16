@@ -51,6 +51,11 @@ struct menu_data {
 	void			*data;
 };
 
+struct menu_draw_data {
+	struct menu_data	*md;
+	u_int		 depth;
+};
+
 void
 menu_add_items(struct menu *menu, const struct menu_item *items,
     struct cmdq_item *qitem, struct client *c, struct cmd_find_state *fs)
@@ -594,10 +599,32 @@ menu_check_cb(__unused struct client *c, void *data, u_int px, u_int py,
 	struct menu_level	*ml;
 	u_int			 i;
 
+	memset(r, 0, sizeof *r);
+	r->px[0] = px;
+	r->nx[0] = nx;
 	for (i = 0; i <= md->depth; i++) {
 		ml = &md->levels[i];
-		server_client_overlay_range(ml->px, ml->py,
-		    ml->menu->width + 4, ml->visible + 2, px, py, nx, r);
+		server_client_overlay_range_subtract(ml->px, ml->py,
+		    ml->menu->width + 4, ml->visible + 2, py, r);
+	}
+}
+
+/* Return parts not obstructed by menu levels above the one being drawn. */
+static void
+menu_draw_check_cb(__unused struct client *c, void *data, u_int px, u_int py,
+    u_int nx, struct overlay_ranges *r)
+{
+	struct menu_draw_data	*dd = data;
+	struct menu_level	*ml;
+	u_int			 i;
+
+	memset(r, 0, sizeof *r);
+	r->px[0] = px;
+	r->nx[0] = nx;
+	for (i = dd->depth + 1; i <= dd->md->depth; i++) {
+		ml = &dd->md->levels[i];
+		server_client_overlay_range_subtract(ml->px, ml->py,
+		    ml->menu->width + 4, ml->visible + 2, py, r);
 	}
 }
 
@@ -611,8 +638,15 @@ menu_draw_cb(struct client *c, void *data,
 	struct menu_level	*ml;
 	struct screen_write_ctx	 ctx;
 	u_int			 depth, i;
+	overlay_check_cb	 checkcb = c->overlay_check;
+	void			*checkdata = c->overlay_data;
+	struct menu_draw_data	 dd = { md, 0 };
 
 	for (depth = 0; depth <= md->depth; depth++) {
+		/* Allow this level to draw, but preserve every level above it. */
+		dd.depth = depth;
+		c->overlay_check = menu_draw_check_cb;
+		c->overlay_data = &dd;
 		ml = &md->levels[depth];
 		s = &ml->s;
 		screen_write_start(&ctx, s);
@@ -628,6 +662,9 @@ menu_draw_cb(struct client *c, void *data,
 			    ml->px, ml->py + i, &grid_default_cell, NULL);
 		}
 	}
+
+	c->overlay_check = checkcb;
+	c->overlay_data = checkdata;
 }
 
 void
@@ -951,7 +988,7 @@ menu_display(struct menu *menu, int flags, int starting_choice,
 	    style, selected_style, border_style, fs, cb, data);
 	if (md == NULL)
 		return (-1);
-	server_client_set_overlay(c, 0, NULL, menu_mode_cb, menu_draw_cb,
+	server_client_set_overlay(c, 0, menu_check_cb, menu_mode_cb, menu_draw_cb,
 	    menu_key_cb, menu_free_cb, NULL, md);
 	return (0);
 }

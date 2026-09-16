@@ -1805,7 +1805,9 @@ struct client_window {
 RB_HEAD(client_windows, client_window);
 
 /* Visible areas not obstructed by overlays. */
-#define OVERLAY_MAX_RANGES 3
+#define MENU_MAX_LEVELS 16
+/* A maximum-depth menu may leave 17 spans; a popup can leave one more. */
+#define OVERLAY_MAX_RANGES (MENU_MAX_LEVELS + 2)
 struct overlay_ranges {
 	u_int	px[OVERLAY_MAX_RANGES];
 	u_int	nx[OVERLAY_MAX_RANGES];
@@ -2769,6 +2771,8 @@ void	 server_client_set_overlay(struct client *, u_int, overlay_check_cb,
 void	 server_client_clear_overlay(struct client *);
 void	 server_client_overlay_range(u_int, u_int, u_int, u_int, u_int, u_int,
 	     u_int, struct overlay_ranges *);
+void	 server_client_overlay_range_subtract(u_int, u_int, u_int, u_int,
+	     u_int, struct overlay_ranges *);
 void	 server_client_set_key_table(struct client *, const char *);
 const char *server_client_get_key_table(struct client *);
 int	 server_client_check_nested(struct client *);
@@ -3421,7 +3425,6 @@ __dead void printflike(1, 2) fatalx(const char *, ...);
 #define MENU_TAB 0x2
 #define MENU_STAYOPEN 0x4
 #define MENU_CONTEXT 0x8
-#define MENU_MAX_LEVELS 16
 #define MENU_CHOICE_NONE -1
 #define MENU_CHOICE_UP -2
 #define MENU_CHOICE_DOWN -3

@@ -666,13 +666,16 @@ screen_redraw_draw_borders_cell(struct screen_redraw_ctx *ctx, u_int i, u_int j)
 	struct grid_cell	 gc;
 	const struct grid_cell	*tmp;
 	struct overlay_ranges	 r;
-	u_int			 cell_type, x = ctx->ox + i, y = ctx->oy + j;
+	u_int			 cell_type, k, visible = 0;
+	u_int			 x = ctx->ox + i, y = ctx->oy + j;
 	int			 arrows = 0, border;
 	int			 isolates;
 
 	if (c->overlay_check != NULL) {
 		c->overlay_check(c, c->overlay_data, x, y, 1, &r);
-		if (r.nx[0] + r.nx[1] == 0)
+		for (k = 0; k < OVERLAY_MAX_RANGES; k++)
+			visible += r.nx[k];
+		if (visible == 0)
 			return;
 	}
 

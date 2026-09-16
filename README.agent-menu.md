@@ -17,6 +17,15 @@ the existing flat-menu argument format.
   pointer motion opens the submenu under the pointer.
 - Each parent has one visible child branch. Opening a sibling first closes and
   repaints the previous child and all of its descendants.
+- Every visible level contributes to one cumulative occlusion mask. Pane,
+  border, status, and forced full-client redraws continue outside the menu but
+  cannot overwrite any menu cell; when menu levels overlap, each deeper level
+  also clips the lower levels being redrawn. The same rule composes a native
+  menu opened over a popup with the popup rectangle. A wide glyph that
+  straddles an occlusion boundary follows the existing visible-space policy for
+  the complete glyph; its continuation cell cannot leak into the overlay, and
+  the logical cursor still advances by its complete width so later visible
+  cells retain their source columns.
 - `display-menu -N` selects on mouse press, ignores releases and drags, and
   dismisses on a press outside the complete menu hierarchy.
 - While a popup is open, wheel events outside its rectangle follow normal tmux

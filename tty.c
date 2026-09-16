@@ -1389,16 +1389,12 @@ static int
 tty_check_overlay(struct tty *tty, u_int px, u_int py)
 {
 	struct overlay_ranges	r;
+	u_int			 i, visible = 0;
 
-	/*
-	 * A unit width range will always return nx[2] == 0 from a check, even
-	 * with multiple overlays, so it's sufficient to check just the first
-	 * two entries.
-	 */
 	tty_check_overlay_range(tty, px, py, 1, &r);
-	if (r.nx[0] + r.nx[1] == 0)
-		return (0);
-	return (1);
+	for (i = 0; i < OVERLAY_MAX_RANGES; i++)
+		visible += r.nx[i];
+	return (visible != 0);
 }
 
 /* Return parts of the input range which are visible. */
@@ -1409,12 +1405,9 @@ tty_check_overlay_range(struct tty *tty, u_int px, u_int py, u_int nx,
 	struct client	*c = tty->client;
 
 	if (c->overlay_check == NULL) {
+		memset(r, 0, sizeof *r);
 		r->px[0] = px;
 		r->nx[0] = nx;
-		r->px[1] = 0;
-		r->nx[1] = 0;
-		r->px[2] = 0;
-		r->nx[2] = 0;
 		return;
 	}
 
@@ -1432,7 +1425,7 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 	struct grid_line	*gl;
 	struct client		*c = tty->client;
 	struct overlay_ranges	 r;
-	u_int			 i, j, ux, sx, width, hidden, eux, nxx;
+	u_int			 i, j, ux, sx, width, hidden, gux, eux, nxx;
 	u_int			 cellsize;
 	int			 flags, cleared = 0, wrapped = 0;
 	char			 buf[512];
@@ -1505,8 +1498,15 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 	for (i = 0; i < sx; i++) {
 		grid_view_get_cell(gd, px + i, py, &gc);
 		gcp = tty_check_codeset(tty, &gc);
+		gux = ux + width;
+		tty_check_overlay_range(tty, atx + gux, aty,
+		    gcp->data.width, &r);
+		hidden = 0;
+		for (j = 0; j < OVERLAY_MAX_RANGES; j++)
+			hidden += r.nx[j];
+		hidden = gcp->data.width - hidden;
 		if (len != 0 &&
-		    (!tty_check_overlay(tty, atx + ux + width, aty) ||
+		    (hidden != 0 ||
 		    (gcp->attr & GRID_ATTR_CHARSET) ||
 		    gcp->flags != last.flags ||
 		    gcp->attr != last.attr ||
@@ -1539,12 +1539,6 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 		else
 			memcpy(&last, gcp, sizeof last);
 
-		tty_check_overlay_range(tty, atx + ux, aty, gcp->data.width,
-		    &r);
-		hidden = 0;
-		for (j = 0; j < OVERLAY_MAX_RANGES; j++)
-			hidden += r.nx[j];
-		hidden = gcp->data.width - hidden;
 		if (hidden != 0 && hidden == gcp->data.width) {
 			if (~gcp->flags & GRID_FLAG_PADDING)
 				ux += gcp->data.width;
@@ -1566,6 +1560,10 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 						ux = eux + r.nx[j];
 					}
 				}
+				/* Preserve the complete logical glyph advance. */
+				ux = gux + gcp->data.width;
+				if (ux > nx)
+					ux = nx;
 			}
 		} else if (gcp->attr & GRID_ATTR_CHARSET) {
 			tty_attributes(tty, &last, defaults, palette,

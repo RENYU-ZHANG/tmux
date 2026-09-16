@@ -156,16 +156,13 @@ server_client_overlay_range(u_int x, u_int y, u_int sx, u_int sy, u_int px,
 {
 	u_int	ox, onx;
 
-	/* Return up to 2 ranges. */
-	r->px[2] = 0;
-	r->nx[2] = 0;
+	/* Return up to two ranges. */
+	memset(r, 0, sizeof *r);
 
 	/* Trivial case of no overlap in the y direction. */
 	if (py < y || py > y + sy - 1) {
 		r->px[0] = px;
 		r->nx[0] = nx;
-		r->px[1] = 0;
-		r->nx[1] = 0;
 		return;
 	}
 
@@ -191,6 +188,33 @@ server_client_overlay_range(u_int x, u_int y, u_int sx, u_int sy, u_int px,
 	} else {
 		r->px[1] = 0;
 		r->nx[1] = 0;
+	}
+}
+
+/* Remove an overlay from a set of visible ranges. */
+void
+server_client_overlay_range_subtract(u_int x, u_int y, u_int sx, u_int sy,
+    u_int py, struct overlay_ranges *r)
+{
+	struct overlay_ranges	 old, next;
+	u_int			 i, j, k = 0;
+
+	memcpy(&old, r, sizeof old);
+	memset(r, 0, sizeof *r);
+	for (i = 0; i < OVERLAY_MAX_RANGES; i++) {
+		if (old.nx[i] == 0)
+			continue;
+		server_client_overlay_range(x, y, sx, sy, old.px[i], py,
+		    old.nx[i], &next);
+		for (j = 0; j < OVERLAY_MAX_RANGES; j++) {
+			if (next.nx[j] == 0)
+				continue;
+			if (k == OVERLAY_MAX_RANGES)
+				fatalx("too many overlay ranges");
+			r->px[k] = next.px[j];
+			r->nx[k] = next.nx[j];
+			k++;
+		}
 	}
 }
 
