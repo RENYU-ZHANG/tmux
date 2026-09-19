@@ -61,6 +61,9 @@ struct popup_data {
 	u_int			  psx;
 	u_int			  psy;
 
+	/* Non-modal mode only: the pane, not the popup, has the keyboard. */
+	int			  focus_pane;
+
 	enum { OFF, MOVE, SIZE }  dragging;
 	u_int			  dx;
 	u_int			  dy;
@@ -97,6 +100,56 @@ static const struct menu_item popup_internal_menu_items[] = {
 
 	{ NULL, KEYC_NONE, NULL }
 };
+
+/* Escape a title so it is drawn as itself and can open no style. */
+static char *
+popup_escape_title(const char *title)
+{
+	char	*out, *cp;
+	size_t	 n = 0;
+
+	for (cp = (char *)title; *cp != '\0'; cp++) {
+		if (*cp == '#')
+			n++;
+		n++;
+	}
+	out = xmalloc(n + 1);
+	for (n = 0; *title != '\0'; title++) {
+		if (*title == '#')
+			out[n++] = '#';
+		out[n++] = *title;
+	}
+	out[n] = '\0';
+	return (out);
+}
+
+/*
+ * Which side has the keyboard, in the longest wording the popup is wide
+ * enough to show, followed by the caller's own title if anything is left.
+ */
+static char *
+popup_state_title(struct popup_data *pd, const char *title)
+{
+	const char	*state;
+	char		*escaped, *out;
+	u_int		 room;
+
+	room = (pd->sx > 4) ? pd->sx - 4 : 0;
+	if (room >= 24)
+		state = pd->focus_pane ? "keys go to the pane" : "keys come here";
+	else if (room >= 14)
+		state = pd->focus_pane ? "keys in pane" : "keys here";
+	else
+		state = pd->focus_pane ? "pane" : "here";
+
+	if (title == NULL || *title == '\0')
+		return (xstrdup(state));
+
+	escaped = popup_escape_title(title);
+	xasprintf(&out, "%s · %s", state, escaped);
+	free(escaped);
+	return (out);
+}
 
 static void
 popup_redraw_cb(const struct tty_ctx *ttyctx)
@@ -153,6 +206,14 @@ popup_mode_cb(__unused struct client *c, void *data, u_int *cx, u_int *cy)
 	if (pd->md != NULL)
 		return (menu_mode_cb(c, pd->md, cx, cy));
 
+	/*
+	 * A non-modal popup that has given the keyboard to a pane must not
+	 * keep the cursor or the terminal modes: the typing is going to the
+	 * pane, so the cursor belongs there too.
+	 */
+	if (pd->focus_pane)
+		return (NULL);
+
 	if (pd->border_lines == BOX_LINES_NONE) {
 		*cx = pd->px + pd->s.cx;
 		*cy = pd->py + pd->s.cy;
@@ -190,18 +251,47 @@ popup_draw_cb(struct client *c, void *data, struct screen_redraw_ctx *rctx)
 	struct screen_write_ctx	 ctx;
 	u_int			 i, px = pd->px, py = pd->py;
 	struct colour_palette	*palette = &pd->palette;
-	struct grid_cell	 defaults;
+	struct grid_cell	 defaults, border;
+	const char		*title;
+	char			*owner = NULL;
 
 	screen_init(&s, pd->sx, pd->sy, 0);
 	screen_write_start(&ctx, &s);
 	screen_write_clearscreen(&ctx, 8);
+
+	/*
+	 * A non-modal popup shares the keyboard with the panes, so its border
+	 * says which side owns it: bright while the popup has the keyboard and
+	 * dim while a pane does. An ordinary popup is drawn exactly as before.
+	 */
+	memcpy(&border, &pd->border_cell, sizeof border);
+	title = pd->title;
+	if (pd->flags & POPUP_NONMODAL) {
+		/*
+		 * A dim border alone is a weak signal and invisible on some
+		 * terminals, so the state is also said in words: which side
+		 * the keys are going to is the one thing the user must not
+		 * have to guess.
+		 *
+		 * It therefore comes first, so a long user title cannot push
+		 * it past the right edge, and the user title is escaped so a
+		 * style it opens cannot colour the state and a malformed one
+		 * cannot discard the whole line.
+		 */
+		if (pd->focus_pane)
+			border.attr |= GRID_ATTR_DIM;
+		else
+			border.attr |= GRID_ATTR_BRIGHT;
+		owner = popup_state_title(pd, title);
+		title = owner;
+	}
 
 	if (pd->border_lines == BOX_LINES_NONE) {
 		screen_write_cursormove(&ctx, 0, 0, 0);
 		screen_write_fast_copy(&ctx, &pd->s, 0, 0, pd->sx, pd->sy);
 	} else if (pd->sx > 2 && pd->sy > 2) {
 		screen_write_box(&ctx, pd->sx, pd->sy, pd->border_lines,
-		    &pd->border_cell, pd->title);
+		    &border, title);
 		screen_write_cursormove(&ctx, 1, 1, 0);
 		screen_write_fast_copy(&ctx, &pd->s, 0, 0, pd->sx - 2,
 		    pd->sy - 2);
@@ -226,6 +316,7 @@ popup_draw_cb(struct client *c, void *data, struct screen_redraw_ctx *rctx)
 		    palette);
 	}
 	screen_free(&s);
+	free(owner);
 	if (pd->md != NULL) {
 		c->overlay_check = NULL;
 		c->overlay_data = NULL;
@@ -318,6 +409,9 @@ popup_make_pane(struct popup_data *pd, enum layout_type type)
 	u_int			 hlimit;
 	const char		*shell;
 
+	if (pd->job == NULL)
+		return;
+
 	window_unzoom(w, 1);
 
 	lc = layout_split_pane(wp, type, -1, 0);
@@ -361,8 +455,17 @@ popup_menu_done(__unused struct menu *menu, __unused u_int choice,
 	pd->menu = NULL;
 	server_redraw_client(pd->c);
 
+	/*
+	 * The command can exit while the popup stays open, which leaves no job
+	 * to paste into or hand to a pane. The key path already checks for
+	 * that; these menu items did not, and dereferenced a null job. A
+	 * non-modal popup makes it easy to reach, because it is meant to be
+	 * left open.
+	 */
 	switch (key) {
 	case 'p':
+		if (pd->job == NULL)
+			break;
 		pb = paste_get_top(NULL);
 		if (pb != NULL) {
 			buf = paste_buffer_data(pb, &len);
@@ -382,15 +485,31 @@ popup_menu_done(__unused struct menu *menu, __unused u_int choice,
 		server_redraw_client(c);
 		break;
 	case 'h':
+		if (pd->job == NULL)
+			break;
 		popup_make_pane(pd, LAYOUT_LEFTRIGHT);
 		break;
 	case 'v':
+		if (pd->job == NULL)
+			break;
 		popup_make_pane(pd, LAYOUT_TOPBOTTOM);
 		break;
 	case 'q':
 		pd->close = 1;
 		break;
 	}
+}
+
+/*
+ * A popup that holds the command queue needs its passed-through keys to jump
+ * the waiting item; one that holds nothing must not jump anybody else's.
+ */
+static int
+popup_passthrough(struct popup_data *pd)
+{
+	if (pd->flags & POPUP_NONMODAL)
+		return (OVERLAY_KEY_PASSTHROUGH_QUEUED);
+	return (OVERLAY_KEY_PASSTHROUGH);
 }
 
 static void
@@ -459,12 +578,13 @@ popup_key_cb(struct client *c, void *data, struct key_event *event)
 	const char		*buf;
 	size_t			 len;
 	u_int			 px, py, x;
+	int			 outside;
 	enum { NONE, LEFT, RIGHT, TOP, BOTTOM } border = NONE;
 
 	if (KEYC_IS_MOUSE(event->key) && MOUSE_WHEEL(m->b) &&
 	    (m->x < pd->px || m->x > pd->px + pd->sx - 1 ||
 	    m->y < pd->py || m->y > pd->py + pd->sy - 1))
-		return (OVERLAY_KEY_PASSTHROUGH);
+		return (popup_passthrough(pd));
 
 	if (pd->md != NULL) {
 		if (menu_key_cb(c, pd->md, event) == 1) {
@@ -476,6 +596,41 @@ popup_key_cb(struct client *c, void *data, struct key_event *event)
 				server_redraw_client(c);
 		}
 		return (0);
+	}
+
+	/*
+	 * A non-modal popup lets the panes keep working underneath it. A mouse
+	 * event outside it gives the keyboard back to the panes and follows
+	 * normal tmux routing, exactly as the wheel already does, so the click
+	 * selects the pane it landed on. A mouse event inside it takes the
+	 * keyboard back. While a pane has the keyboard every other key follows
+	 * it, so the popup is never closed by a keystroke meant for the pane:
+	 * closing stays a deliberate act on the popup itself. A drag in
+	 * progress still belongs to the popup border.
+	 */
+	if ((pd->flags & POPUP_NONMODAL) && pd->dragging == OFF) {
+		if (KEYC_IS_MOUSE(event->key) && !MOUSE_WHEEL(m->b)) {
+			outside = (m->x < pd->px ||
+			    m->x > pd->px + pd->sx - 1 ||
+			    m->y < pd->py ||
+			    m->y > pd->py + pd->sy - 1);
+			/*
+			 * Only a button press moves the keyboard. A drag and
+			 * its release belong to whoever the press gave it to,
+			 * so a selection that starts in a pane and wanders
+			 * over the popup keeps going to that pane, and one
+			 * that starts on the popup is not handed to a pane by
+			 * crossing an edge.
+			 */
+			if (!MOUSE_DRAG(m->b) && !MOUSE_RELEASE(m->b) &&
+			    pd->focus_pane != outside) {
+				pd->focus_pane = outside;
+				server_redraw_client(c);
+			}
+			if (pd->focus_pane)
+				return (popup_passthrough(pd));
+		} else if (!KEYC_IS_MOUSE(event->key) && pd->focus_pane)
+			return (popup_passthrough(pd));
 	}
 
 	if (KEYC_IS_MOUSE(event->key)) {
@@ -644,8 +799,22 @@ popup_display(int flags, enum box_lines lines, struct cmdq_item *item, u_int px,
 		return (-1);
 
 	pd = xcalloc(1, sizeof *pd);
-	pd->item = item;
+	/*
+	 * A non-modal popup does not hold the command that opened it. Holding
+	 * it leaves that item waiting in the client's queue, and everything
+	 * appended afterwards - a later binding, an if-shell callback, a
+	 * choose-tree result - waits behind it until the popup closes, which
+	 * for a popup meant to be left open is indefinitely.
+	 */
+	pd->item = (flags & POPUP_NONMODAL) ? NULL : item;
 	pd->flags = flags;
+	/*
+	 * A popup the user did not ask for must not take the keyboard away
+	 * from what they are typing into. Opened unfocused, it is drawn and
+	 * waits to be clicked.
+	 */
+	pd->focus_pane = ((flags & (POPUP_NONMODAL|POPUP_UNFOCUSED)) ==
+	    (POPUP_NONMODAL|POPUP_UNFOCUSED));
 	if (title != NULL)
 		pd->title = xstrdup(title);
 
@@ -696,6 +865,26 @@ popup_display(int flags, enum box_lines lines, struct cmdq_item *item, u_int px,
 	pd->job = job_run(shellcmd, argc, argv, env, s, cwd,
 	    popup_job_update_cb, popup_job_complete_cb, NULL, pd,
 	    JOB_NOWAIT|JOB_PTY|JOB_KEEPWRITE|JOB_DEFAULTSHELL, jx, jy);
+	/*
+	 * Running the job can fail - a descriptor limit reached, a fork that
+	 * does not happen - and the event was taken from it without asking.
+	 * The overlay is not set up yet, so nothing will free this popup for
+	 * us; refusing to open one is the whole cost, where dereferencing the
+	 * job that never started takes the server and every session with it.
+	 */
+	if (pd->job == NULL) {
+		server_client_unref(pd->c);
+		screen_free(&pd->s);
+		colour_palette_free(&pd->palette);
+		free(pd->title);
+		free(pd);
+		/*
+		 * Distinct from the size refusals above, which are silent and
+		 * stay that way: this one is worth telling the caller about,
+		 * because nothing is wrong with what they asked for.
+		 */
+		return (-2);
+	}
 	pd->ictx = input_init(NULL, job_get_event(pd->job), &pd->palette);
 
 	server_client_set_overlay(c, 0, popup_check_cb, popup_mode_cb,

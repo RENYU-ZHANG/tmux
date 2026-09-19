@@ -58,8 +58,8 @@ const struct cmd_entry cmd_display_popup_entry = {
 	.name = "display-popup",
 	.alias = "popup",
 
-	.args = { "Bb:Cc:d:e:Eh:s:S:t:T:w:x:y:", 0, -1, NULL },
-	.usage = "[-BCE] [-b border-lines] [-c target-client] "
+	.args = { "ABb:Cc:d:e:Eh:s:S:t:T:w:x:y:", 0, -1, NULL },
+	.usage = "[-ABCE] [-b border-lines] [-c target-client] "
 		 "[-d start-directory] [-e environment] [-h height] "
 		 "[-s style] [-S border-style] " CMD_TARGET_PANE_USAGE
 		 "[-T title] [-w width] [-x position] [-y position] "
@@ -501,7 +501,7 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 	const char		*style = args_get(args, 's');
 	const char		*border_style = args_get(args, 'S');
 	char			*cwd, *cause = NULL, **argv = NULL, *title;
-	int			 flags = 0, argc = 0;
+	int			 flags = 0, argc = 0, opened;
 	enum box_lines		 lines = BOX_LINES_DEFAULT;
 	u_int			 px, py, w, h, count = args_count(args);
 	struct args_value	*av;
@@ -592,13 +592,27 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 		flags |= POPUP_CLOSEEXITZERO;
 	else if (args_has(args, 'E'))
 		flags |= POPUP_CLOSEEXIT;
-	if (popup_display(flags, lines, item, px, py, w, h, env, shellcmd, argc,
-	    argv, cwd, title, tc, s, style, border_style, NULL, NULL) != 0) {
+	if (args_has(args, 'A') > 1)
+		flags |= POPUP_NONMODAL|POPUP_UNFOCUSED;
+	else if (args_has(args, 'A'))
+		flags |= POPUP_NONMODAL;
+	opened = popup_display(flags, lines, item, px, py, w, h, env, shellcmd,
+	    argc, argv, cwd, title, tc, s, style, border_style, NULL, NULL);
+	if (opened != 0) {
 		cmd_free_argv(argc, argv);
 		if (env != NULL)
 			environ_free(env);
 		free(cwd);
 		free(title);
+		/*
+		 * A popup that does not fit is refused silently, as it always
+		 * has been. A command that could not be started is the
+		 * caller's business.
+		 */
+		if (opened == -2) {
+			cmdq_error(item, "failed to start popup command");
+			return (CMD_RETURN_ERROR);
+		}
 		return (CMD_RETURN_NORMAL);
 	}
 	if (env != NULL)
@@ -606,5 +620,7 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 	free(cwd);
 	free(title);
 	cmd_free_argv(argc, argv);
+	if (args_has(args, 'A'))
+		return (CMD_RETURN_NORMAL);
 	return (CMD_RETURN_WAIT);
 }

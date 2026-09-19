@@ -6669,7 +6669,7 @@ forwards any input read from stdin to the empty pane given by
 .Ar target-pane .
 .Tg popup
 .It Xo Ic display-popup
-.Op Fl BCE
+.Op Fl ABCE
 .Op Fl b Ar border-lines
 .Op Fl c Ar target-client
 .Op Fl d Ar start-directory
@@ -6690,8 +6690,72 @@ Display a popup running
 on
 .Ar target-client .
 A popup is a rectangular box drawn over the top of any panes.
-Panes are not updated while a popup is present.
+Panes are not updated while a popup is present, unless it is non-modal
+.Pq Fl A ,
+in which case the pane holding the keyboard continues to run and redraw
+outside the popup rectangle.
 Mouse wheel events outside the popup are sent to the pane under the pointer.
+.Pp
+.Fl A
+makes the popup non-modal.
+Two
+.Fl A
+additionally opens it without the keyboard, so a popup the user did not ask
+for appears without swallowing what they are typing; a press inside it takes
+the keyboard as usual.
+A mouse button press outside the popup selects the pane under the pointer as
+usual and the keyboard follows it, while the popup stays open and drawn; a
+press inside the popup gives the keyboard back to it.
+Only a press moves the keyboard: a drag and its release stay with whichever
+side the press gave them to.
+While a pane has the keyboard, the cursor and the terminal modes come from
+that pane, and that pane's cursor is hidden while the popup covers it.
+Which side has the keyboard is said first in the border title, in the longest
+wording the popup is wide enough to show, and also shown by a dim or bright
+border.
+Because that marker has to survive, any
+.Fl T
+title follows it and is drawn literally, so a style opened in the title does
+not reach the state and a malformed one cannot discard it.
+Moving and resizing the popup from its border are unchanged, as is the popup's
+own menu on a right press on its top or left border; a right press outside it
+goes to the pane instead.
+.Pp
+Because the keyboard moves only on a mouse press, a popup opened without the
+keyboard cannot be given it while
+.Ic mouse
+is off, and can then be closed only by
+.Ic display-popup Fl C
+or by
+.Ar shell-command
+exiting under
+.Fl E .
+.Pp
+A non-modal popup is closed by its own menu's
+.Ql Close ,
+by
+.Ic display-popup Fl C ,
+by
+.Ar shell-command
+exiting when
+.Fl E
+was given, or, when it has the keyboard and
+.Fl E
+was not given, by
+.Ql Escape
+or
+.Ql C-c .
+.Pp
+A non-modal popup does not hold the command that opened it, which therefore
+completes instead of waiting for the popup to close, and does not report
+.Ar shell-command Ns 's
+exit status to its caller.
+Any command queued afterwards runs immediately rather than waiting behind it.
+.Pp
+Opening the command prompt, a confirmation or a search closes a non-modal
+popup, because a prompt clears any overlay; the prompt then behaves normally.
+A surface that expects to be left open should be cheap to reopen in the same
+state rather than assume it survives a prompt.
 .Pp
 .Fl E
 closes the popup automatically when

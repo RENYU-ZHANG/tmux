@@ -2132,13 +2132,30 @@ out:
 	return (CMD_RETURN_NORMAL);
 }
 
+/* Is one cell of a pane visible, or does an overlay cover it? */
+static int
+server_client_cell_visible(struct client *c, u_int px, u_int py)
+{
+	struct overlay_ranges	 r;
+	u_int			 i;
+
+	if (c->overlay_check == NULL)
+		return (1);
+	c->overlay_check(c, c->overlay_data, px, py, 1, &r);
+	for (i = 0; i < OVERLAY_MAX_RANGES; i++) {
+		if (r.nx[i] != 0)
+			return (1);
+	}
+	return (0);
+}
+
 /* Handle a key event. */
 int
 server_client_handle_key(struct client *c, struct key_event *event)
 {
 	struct session		*s = c->session;
 	struct cmdq_item	*item;
-	int			 bypass_waiting = 0;
+	int			 bypass_waiting = 0, passed;
 
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
@@ -2156,14 +2173,32 @@ server_client_handle_key(struct client *c, struct key_event *event)
 			status_message_clear(c);
 		}
 		if (c->overlay_key != NULL) {
-			switch (c->overlay_key(c, c->overlay_data, event)) {
+			passed = c->overlay_key(c, c->overlay_data, event);
+			switch (passed) {
 			case 0:
 				return (0);
 			case 1:
 				server_client_clear_overlay(c);
 				return (0);
 			case OVERLAY_KEY_PASSTHROUGH:
-				bypass_waiting = 1;
+			case OVERLAY_KEY_PASSTHROUGH_QUEUED:
+				/*
+				 * A prompt opened before the overlay is still
+				 * displayed and still owns its keys; passing
+				 * them to a pane would leave the user typing
+				 * into one surface while reading another.
+				 */
+				if (c->prompt_string != NULL &&
+				    status_prompt_key(c, event->key) == 0)
+					return (0);
+				/*
+				 * Only an overlay that leaves a waiting item
+				 * of its own needs the bypass. Using it for
+				 * an overlay that does not would let these
+				 * keys jump ahead of unrelated waiting items.
+				 */
+				bypass_waiting =
+				    (passed == OVERLAY_KEY_PASSTHROUGH);
 				goto queue_key;
 			}
 		}
@@ -2434,7 +2469,7 @@ server_client_reset_state(struct client *c)
 	struct window_pane	*wp = server_client_get_pane(c), *loop;
 	struct screen		*s = NULL;
 	struct options		*oo = c->session->options;
-	int			 mode = 0, cursor, flags, n;
+	int			 mode = 0, cursor, flags, n, pane_cursor = 0;
 	u_int			 cx = 0, cy = 0, ox, oy, sx, sy;
 
 	if (c->flags & (CLIENT_CONTROL|CLIENT_SUSPENDED))
@@ -2444,12 +2479,30 @@ server_client_reset_state(struct client *c)
 	flags = (tty->flags & TTY_BLOCK);
 	tty->flags &= ~TTY_BLOCK;
 
-	/* Get mode from overlay if any, else from screen. */
+	/*
+	 * Get mode from overlay if any, else from screen. An overlay that has
+	 * given the keyboard to a pane returns no screen, and the cursor and
+	 * the terminal modes then come from that pane, where the typing is
+	 * going. Every overlay that keeps the keyboard returns its own screen
+	 * and is unaffected.
+	 */
 	if (c->overlay_draw != NULL) {
-		if (c->overlay_mode != NULL)
+		if (c->overlay_mode != NULL) {
 			s = c->overlay_mode(c, c->overlay_data, &cx, &cy);
-	} else
+			if (s == NULL) {
+				s = wp->screen;
+				pane_cursor = 1;
+			}
+		}
+		/*
+		 * An overlay with no mode callback at all, such as
+		 * display-panes, contributes neither screen nor cursor, as
+		 * before.
+		 */
+	} else {
 		s = wp->screen;
+		pane_cursor = 1;
+	}
 	if (s != NULL)
 		mode = s->mode;
 	if (log_get_level() != 0) {
@@ -2475,7 +2528,7 @@ server_client_reset_state(struct client *c)
 		}
 		cx = c->prompt_cursor;
 		mode &= ~MODE_CURSOR;
-	} else if (c->overlay_draw == NULL) {
+	} else if (pane_cursor) {
 		cursor = 0;
 		tty_window_offset(tty, &ox, &oy, &sx, &sy);
 		if (wp->xoff + s->cx >= ox && wp->xoff + s->cx <= ox + sx &&
@@ -2487,6 +2540,14 @@ server_client_reset_state(struct client *c)
 
 			if (status_at_line(c) == 0)
 				cy += status_line_size(c);
+
+			/*
+			 * The pane may be typing underneath the overlay. Its
+			 * cursor must not be drawn on top of it: that is the
+			 * confusion this whole branch exists to remove.
+			 */
+			if (!server_client_cell_visible(c, cx, cy))
+				cursor = 0;
 		}
 		if (!cursor)
 			mode &= ~MODE_CURSOR;

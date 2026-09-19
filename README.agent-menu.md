@@ -32,6 +32,46 @@ the existing flat-menu argument format.
   routing to the pane under the pointer without closing the popup. The usual
   `WheelUpPane` or `WheelDownPane` binding receives the original coordinates;
   all other outside events are unchanged.
+- `display-popup -A` opens the popup non-modally. A mouse press outside it
+  follows the same normal routing the wheel already does, so the click selects
+  the pane under the pointer, and every later key goes there too; a press
+  inside the popup takes the keyboard back. Only a press moves the keyboard,
+  so a drag and its release stay with whichever side the press gave them to.
+  While a pane has the keyboard the cursor and the terminal modes come from
+  that pane, and that pane's cursor is hidden while the popup covers it. Which
+  side has the keyboard is said in words at the *start* of the border title and
+  shown by a dim or bright border, because a border style alone is faint on
+  many terminals. The wording shortens with the popup — `keys come here`,
+  `keys here`, `here` — so it survives a narrow popup, and any `-T` title
+  follows it and is drawn literally, so a style opened there cannot colour the
+  state and a malformed one cannot discard it. With `mouse` off the keyboard
+  cannot move at all, so a popup opened unfocused can then only be closed with
+  `display-popup -C` or by its command exiting under `-E`.
+  Border drag to move and border drag to resize are unchanged and the popup
+  rectangle still masks the pane redraws underneath it. A popup opened without
+  `-A` behaves exactly as before.
+- `display-popup -AA` opens it non-modally **and without the keyboard**, so a
+  popup the user did not ask for appears without swallowing what they are
+  typing. A press inside takes the keyboard as usual. This is what allows a
+  surface that appears on its own, such as an explanation beside the pointer,
+  to obey the rule that no key may change meaning.
+- A non-modal popup is closed by its own menu's `Close`, by `display-popup -C`,
+  by the command exiting under `-E`, or by `Escape` or `C-c` when it has the
+  keyboard and `-E` was not given. Its menu is reached by a right press on its
+  top or left border; a right press outside goes to the pane instead.
+- A non-modal popup does not hold the command that opened it: that command
+  completes rather than waiting, so anything queued afterwards runs while the
+  popup is open, and the command does not receive the shell command's exit
+  status.
+- Opening the command prompt, a confirmation or a search closes a non-modal
+  popup, because `status_prompt_set` clears any overlay before setting the
+  prompt. The prompt then behaves normally and no keystroke is misdirected: a
+  view is lost, never a key. A surface meant to be left open should be cheap
+  to reopen in the same state.
+- While a non-modal popup exists, `display-menu`, `display-panes` and a second
+  `display-popup` silently do nothing, because an overlay is already present.
+  A right press outside the popup therefore appears to do nothing: the pane
+  under the pointer takes the keyboard and its context menu does not open.
 
 Use `-M` when a menu opened by a non-mouse key binding should also accept mouse
 input. Menus opened from a mouse binding accept mouse input automatically.

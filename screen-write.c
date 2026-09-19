@@ -816,7 +816,12 @@ screen_write_box(struct screen_write_ctx *ctx, u_int nx, u_int ny,
 		screen_write_cell(ctx, &gc);
 	}
 
-	if (title != NULL) {
+	/*
+	 * The title needs the two corners and the two cells inside them, so
+	 * there is no room for it at all below five columns; drawing it would
+	 * underflow the available width and overwrite the top-right corner.
+	 */
+	if (title != NULL && nx >= 5) {
 		gc.attr &= ~GRID_ATTR_CHARSET;
 		screen_write_cursormove(ctx, cx + 2, cy, 0);
 		format_draw(ctx, &gc, nx - 4, title, NULL, 0);
