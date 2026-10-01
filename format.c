@@ -2685,6 +2685,12 @@ format_cb_session_last_attached(struct format_tree *ft)
 
 /* Callback for start_time. */
 static void *
+format_cb_server_instance(__unused struct format_tree *ft)
+{
+	return (xstrdup(server_instance));
+}
+
+static void *
 format_cb_start_time(__unused struct format_tree *ft)
 {
 	return (&start_time);
@@ -3080,6 +3086,9 @@ static const struct format_table_entry format_table[] = {
 	},
 	{ "scroll_region_upper", FORMAT_TABLE_STRING,
 	  format_cb_scroll_region_upper
+	},
+	{ "server_instance", FORMAT_TABLE_STRING,
+	  format_cb_server_instance
 	},
 	{ "server_sessions", FORMAT_TABLE_STRING,
 	  format_cb_server_sessions

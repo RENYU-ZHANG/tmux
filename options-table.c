@@ -332,6 +332,14 @@ const struct options_table_entry options_table[] = {
 	  .text = "Whether to send focus events to applications."
 	},
 
+	{ .name = "session-close-journal",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_SERVER,
+	  .default_str = "",
+	  .text = "Private directory for durable kill-session target records. "
+		  "Empty disables recording."
+	},
+
 	{ .name = "history-file",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_SERVER,

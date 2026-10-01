@@ -39,6 +39,7 @@ struct options	*global_w_options;	/* window options */
 struct environ	*global_environ;
 
 struct timeval	 start_time;
+char		 server_instance[33];
 const char	*socket_path;
 int		 ptm_fd = -1;
 const char	*shell_command;

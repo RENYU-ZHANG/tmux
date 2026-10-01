@@ -214,6 +214,15 @@ server_start(struct tmuxproc *client, uint64_t flags, struct event_base *base,
 	key_bindings_init();
 	TAILQ_INIT(&message_log);
 	gettimeofday(&start_time, NULL);
+	/* Identity of this server lifetime, independent of reused PIDs and names. */
+	{
+		uint32_t instance[4];
+
+		if (getentropy(instance, sizeof instance) != 0)
+			fatal("getentropy");
+		for (u_int i = 0; i < 4; i++)
+			snprintf(server_instance + i * 8, 9, "%08x", instance[i]);
+	}
 
 #ifdef HAVE_SYSTEMD
 	server_fd = systemd_create_socket(flags, &cause);

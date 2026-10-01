@@ -4111,6 +4111,24 @@ option.
 If not empty, a file to which
 .Nm
 will write command prompt history on exit and load it from on start.
+.It Ic session-close-journal Ar directory
+An optional absolute private directory for intentional session closure records.
+The default is empty, which preserves the usual command behavior.
+When configured,
+.Ic kill-session
+atomically records its complete resolved target set before destroying any
+session or returning success. A recording error leaves every target live.
+.Ic kill-session -C
+and
+.Ic kill-server
+do not record intentional closures.
+Records are bound to
+.Ql server_instance
+and native session IDs, so replacing a server or reusing a session name does
+not transfer a previous closure to the replacement.
+The directory must already exist, belong to the server user, and have no
+group or other permissions. Records survive server-process loss; recovery
+after a whole-machine reboot is a separate policy.
 .It Ic message-limit Ar number
 Set the number of error or information messages to save in the message log for
 each client.
@@ -5893,6 +5911,7 @@ The following variables are available, where appropriate:
 .It Li "session_last_attached" Ta "" Ta "Time session last attached"
 .It Li "session_many_attached" Ta "" Ta "1 if multiple clients attached"
 .It Li "session_marked" Ta "" Ta "1 if this session contains the marked pane"
+.It Li "server_instance" Ta "" Ta "Opaque identity of this server lifetime"
 .It Li "session_name" Ta "#S" Ta "Name of session"
 .It Li "session_path" Ta "" Ta "Working directory of session"
 .It Li "session_stack" Ta "" Ta "Window indexes in most recent order"
