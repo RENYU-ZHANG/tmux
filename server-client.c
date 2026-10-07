@@ -403,6 +403,8 @@ server_client_set_session(struct client *c, struct session *s)
 		c->last_session = NULL;
 	c->session = s;
 	c->flags |= CLIENT_FOCUSED;
+	if (s == NULL)
+		status_timer_start(c);
 
 	if (old != NULL && old->curw != NULL)
 		window_update_focus(old->curw->window);
@@ -2743,7 +2745,9 @@ server_client_check_redraw(struct client *c)
 	}
 
 	if (c->flags & CLIENT_ALLREDRAWFLAGS) {
-		if (options_get_number(s->options, "set-titles")) {
+		if (((c->flags & CLIENT_ALLREDRAWFLAGS) != CLIENT_REDRAWSTATUSANIMATION ||
+		    (c->flags & CLIENT_STATUSFORCE)) &&
+		    options_get_number(s->options, "set-titles")) {
 			server_client_set_title(c);
 			server_client_set_path(c);
 		}

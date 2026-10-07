@@ -31,6 +31,8 @@
 
 static void	 status_message_callback(int, short, void *);
 static void	 status_timer_callback(int, short, void *);
+static void	 status_animation_callback(int, short, void *);
+static void	 status_animation_schedule(struct client *);
 
 static char	*status_prompt_find_history_file(void);
 static const char *status_prompt_up_history(u_int *, u_int);
@@ -199,11 +201,57 @@ status_timer_callback(__unused int fd, __unused short events, void *arg)
 	log_debug("client %p, status interval %d", c, (int)tv.tv_sec);
 }
 
+/* Arm only while a visible normal status render actually uses the token. */
+static void
+status_animation_schedule(struct client *c)
+{
+	struct status_line	*sl = &c->status;
+	struct timeval		 tv;
+	uint64_t		 interval, delay;
+
+	if (!event_initialized(&sl->animation_timer))
+		evtimer_set(&sl->animation_timer, status_animation_callback, c);
+	else
+		evtimer_del(&sl->animation_timer);
+	if (c->session == NULL || !sl->animation_used ||
+	    c->message_string != NULL || c->prompt_string != NULL ||
+	    (c->flags & (CLIENT_UNATTACHEDFLAGS|CLIENT_CONTROL)) ||
+	    status_line_size(c) == 0 ||
+	    !options_get_number(c->session->options, "status"))
+		return;
+	interval = options_get_number(c->session->options,
+	    "status-animation-interval");
+	if (interval == 0)
+		return;
+	/* Align to the clock rather than accumulating render/event latency. */
+	delay = interval - (get_timer() % interval);
+	tv.tv_sec = delay / 1000;
+	tv.tv_usec = (delay % 1000) * 1000;
+	evtimer_add(&sl->animation_timer, &tv);
+}
+
+static void
+status_animation_callback(__unused int fd, __unused short events, void *arg)
+{
+	struct client	*c = arg;
+
+	status_animation_schedule(c);
+	if (evtimer_pending(&c->status.animation_timer, NULL)) {
+		c->flags |= CLIENT_REDRAWSTATUSANIMATION;
+		log_debug("%s: animation tick", c->name);
+	}
+}
+
 /* Start status timer for client. */
 void
 status_timer_start(struct client *c)
 {
 	struct session	*s = c->session;
+
+	c->status.animation_used = 0;
+	c->flags &= ~CLIENT_REDRAWSTATUSANIMATION;
+	if (event_initialized(&c->status.animation_timer))
+		evtimer_del(&c->status.animation_timer);
 
 	if (event_initialized(&c->status.timer))
 		evtimer_del(&c->status.timer);
@@ -356,6 +404,8 @@ status_free(struct client *c)
 
 	if (event_initialized(&sl->timer))
 		evtimer_del(&sl->timer);
+	if (event_initialized(&sl->animation_timer))
+		evtimer_del(&sl->animation_timer);
 
 	if (sl->active != &sl->screen) {
 		screen_free(sl->active);
@@ -392,7 +442,12 @@ status_redraw(struct client *c)
 		return (1);
 
 	/* Create format tree. */
+	sl->animation_used = 0;
+	sl->animation_time = get_timer();
 	flags = FORMAT_STATUS;
+	if ((c->flags & CLIENT_ALLREDRAWFLAGS) == CLIENT_REDRAWSTATUSANIMATION &&
+	    (~c->flags & CLIENT_STATUSFORCE))
+		flags |= FORMAT_CACHEJOBS;
 	if (c->flags & CLIENT_STATUSFORCE)
 		flags |= FORMAT_FORCE;
 	ft = format_create(c, NULL, FORMAT_NONE, flags);
@@ -461,6 +516,7 @@ status_redraw(struct client *c)
 
 	/* Free the format tree. */
 	format_free(ft);
+	status_animation_schedule(c);
 
 	/* Return if the status line has changed. */
 	log_debug("%s exit: force=%d, changed=%d", __func__, force, changed);

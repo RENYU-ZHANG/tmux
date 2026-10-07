@@ -362,6 +362,8 @@ format_job_get(struct format_expand_state *es, const char *cmd)
 		jobs = &format_jobs;
 	else if (ft->client->jobs != NULL)
 		jobs = ft->client->jobs;
+	else if (ft->flags & FORMAT_CACHEJOBS)
+		return (xstrdup(""));
 	else {
 		jobs = ft->client->jobs = xmalloc(sizeof *ft->client->jobs);
 		RB_INIT(jobs);
@@ -369,6 +371,21 @@ format_job_get(struct format_expand_state *es, const char *cmd)
 
 	fj0.tag = ft->tag;
 	fj0.cmd = cmd;
+	if (ft->flags & FORMAT_CACHEJOBS) {
+		/* A tick is a read: do not allocate or alter even a missed job. */
+		fj = RB_FIND(format_job_tree, jobs, &fj0);
+		if (fj == NULL || fj->out == NULL)
+			return (xstrdup(""));
+		format_copy_state(&next, es, FORMAT_EXPAND_NOJOBS);
+		next.flags &= ~FORMAT_EXPAND_TIME;
+		expanded = format_expand1(&next, cmd);
+		if (fj->expanded == NULL || strcmp(expanded, fj->expanded) != 0) {
+			free(expanded);
+			return (xstrdup(""));
+		}
+		free(expanded);
+		return (format_expand1(&next, fj->out));
+	}
 	if ((fj = RB_FIND(format_job_tree, jobs, &fj0)) == NULL) {
 		fj = xcalloc(1, sizeof *fj);
 		fj->client = ft->client;
@@ -472,6 +489,24 @@ format_printf(const char *fmt, ...)
 	xvasprintf(&s, fmt, ap);
 	va_end(ap);
 	return (s);
+}
+
+/* One shared client-status sample survives every nested format tree. */
+static void *
+format_cb_status_animation_frame(struct format_tree *ft)
+{
+	struct client	*c = ft->client;
+	uint64_t	 interval;
+
+	if (c == NULL || c->session == NULL || (~ft->flags & FORMAT_STATUS))
+		return (xstrdup("0"));
+	interval = options_get_number(c->session->options,
+	    "status-animation-interval");
+	if (interval == 0)
+		return (xstrdup("0"));
+	c->status.animation_used = 1;
+	return (format_printf("%llu",
+	    (unsigned long long)(c->status.animation_time / interval)));
 }
 
 /* Callback for host. */
@@ -3152,6 +3187,9 @@ static const struct format_table_entry format_table[] = {
 	},
 	{ "start_time", FORMAT_TABLE_TIME,
 	  format_cb_start_time
+	},
+	{ "status_animation_frame", FORMAT_TABLE_STRING,
+	  format_cb_status_animation_frame
 	},
 	{ "tree_mode_format", FORMAT_TABLE_STRING,
 	  format_cb_tree_mode_format

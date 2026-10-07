@@ -1748,6 +1748,9 @@ struct status_line_entry {
 };
 struct status_line {
 	struct event		 timer;
+	struct event		 animation_timer;
+	uint64_t		 animation_time;
+	int			 animation_used;
 
 	struct screen		 screen;
 	struct screen		*active;
@@ -1910,13 +1913,15 @@ struct client {
 #define CLIENT_WINDOWSIZECHANGED 0x400000000ULL
 #define CLIENT_CLIPBOARDBUFFER 0x800000000ULL
 #define CLIENT_BRACKETPASTING 0x1000000000ULL
+#define CLIENT_REDRAWSTATUSANIMATION 0x2000000000ULL
 #define CLIENT_ALLREDRAWFLAGS		\
 	(CLIENT_REDRAWWINDOW|		\
 	 CLIENT_REDRAWSTATUS|		\
 	 CLIENT_REDRAWSTATUSALWAYS|	\
 	 CLIENT_REDRAWBORDERS|		\
 	 CLIENT_REDRAWOVERLAY|		\
-	 CLIENT_REDRAWPANES)
+	 CLIENT_REDRAWPANES|		\
+	 CLIENT_REDRAWSTATUSANIMATION)
 #define CLIENT_UNATTACHEDFLAGS	\
 	(CLIENT_DEAD|		\
 	 CLIENT_SUSPENDED|	\
@@ -2210,6 +2215,7 @@ char		*paste_make_sample(struct paste_buffer *);
 #define FORMAT_FORCE 0x2
 #define FORMAT_NOJOBS 0x4
 #define FORMAT_VERBOSE 0x8
+#define FORMAT_CACHEJOBS 0x10
 #define FORMAT_NONE 0
 #define FORMAT_PANE 0x80000000U
 #define FORMAT_WINDOW 0x40000000U

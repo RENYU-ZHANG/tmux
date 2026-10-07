@@ -510,6 +510,10 @@ screen_redraw_update(struct client *c, uint64_t flags)
 	int				 redraw;
 	enum pane_lines			 lines;
 	struct screen_redraw_ctx	 ctx;
+	int			 animation_only;
+
+	animation_only = ((flags & CLIENT_ALLREDRAWFLAGS) ==
+	    CLIENT_REDRAWSTATUSANIMATION && (~flags & CLIENT_STATUSFORCE));
 
 	if (c->message_string != NULL)
 		redraw = status_message_redraw(c);
@@ -517,11 +521,19 @@ screen_redraw_update(struct client *c, uint64_t flags)
 		redraw = status_prompt_redraw(c);
 	else
 		redraw = status_redraw(c);
+	if (flags & CLIENT_REDRAWSTATUSANIMATION) {
+		flags &= ~CLIENT_REDRAWSTATUSANIMATION;
+		if (redraw)
+			flags |= CLIENT_REDRAWSTATUS;
+	}
 	if (!redraw && (~flags & CLIENT_REDRAWSTATUSALWAYS))
 		flags &= ~CLIENT_REDRAWSTATUS;
 
 	if (c->overlay_draw != NULL)
 		flags |= CLIENT_REDRAWOVERLAY;
+	/* Pane status jobs belong to ordinary redraws, as do title jobs. */
+	if (animation_only)
+		return (flags);
 
 	if (options_get_number(wo, "pane-border-status") != PANE_STATUS_OFF) {
 		screen_redraw_set_context(c, &ctx);

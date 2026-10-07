@@ -4575,6 +4575,23 @@ more rows.
 Specify the format to be used for each line of the status line.
 The default builds the top status line from the various individual status
 options below.
+.It Ic status-animation-interval Ar milliseconds
+Set the interval for opt-in status animation. The default, zero, disables it.
+Only an attached terminal client whose status format evaluates
+.Ql status_animation_frame
+arms a timer. The format is an integer frame number derived from one monotonic
+clock sample per status render, shared through nested window and pane formats.
+It is zero when disabled or evaluated outside a status render.
+Animation-only redraws read matching cached format-job output and leave missing
+or changed commands blank until ordinary evaluation; they never start or kill
+jobs. They do not reevaluate terminal titles or pane-border status formats.
+Ordinary, job-completion and forced redraws retain their normal behavior.
+The timer stops when the token is unused, status is hidden, the client is
+suspended or detached, or a prompt or message occupies status.
+This option does not change
+.Ic status-interval
+or strftime units. A value of 200 requests approximately five frames per second;
+output backpressure may coalesce frames.
 .It Ic status-interval Ar interval
 Update the status line every
 .Ar interval

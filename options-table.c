@@ -723,6 +723,16 @@ const struct options_table_entry options_table[] = {
 		  "as 'status-left'."
 	},
 
+	{ .name = "status-animation-interval",
+	  .type = OPTIONS_TABLE_NUMBER,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .minimum = 0,
+	  .maximum = INT_MAX,
+	  .default_num = 0,
+	  .unit = "milliseconds",
+	  .text = "Status animation frame interval; zero disables animation."
+	},
+
 	{ .name = "status-interval",
 	  .type = OPTIONS_TABLE_NUMBER,
 	  .scope = OPTIONS_TABLE_SESSION,
