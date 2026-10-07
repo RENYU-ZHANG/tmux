@@ -273,7 +273,7 @@ menu_level_visible(struct menu_level *ml)
 	if (ml->choice < 0)
 		return;
 	rows = ml->visible;
-	if (ml->visible > 1 && ml->top != 0)
+	if (ml->visible > 2 && ml->top != 0)
 		rows--;
 	if (ml->visible > 1 && ml->top + rows < ml->menu->count)
 		rows--;
@@ -301,8 +301,8 @@ menu_level_visible(struct menu_level *ml)
 static int
 menu_level_has_up(struct menu_level *ml)
 {
-	/* A one-row viewport must retain a selectable content row. */
-	return (ml->visible > 1 && ml->top != 0);
+	/* With two rows, prefer the down indicator to hiding all content. */
+	return (ml->visible > 2 && ml->top != 0);
 }
 
 static int

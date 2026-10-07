@@ -55,3 +55,11 @@ tmux display-menu -L -N \
 `--submenu` and `--end` are reserved only when `-L` is present. Nesting is
 limited to 16 visible levels. The original `name key command ...` grammar is
 unchanged when `-L` is absent.
+# Source-only baseline repair
+
+Tiny menus with two content rows retain at least one item row. They omit the
+up indicator at that height, retaining the down indicator while more items
+remain. Keyboard navigation and wheel scrolling still reach earlier items;
+selection, drawing and mouse hit-testing use the same row budget. One-row and
+ordinary viewports keep their existing behavior. This repair is based on the
+deployed fbb52380 feature set; it excludes non-modal popups and close journals.
