@@ -141,6 +141,7 @@ struct format_tree {
 
 	struct cmdq_item	*item;
 	struct client		*client;
+	struct client		*status_client; /* Held by the root format tree. */
 	int			 flags;
 	u_int			 tag;
 
@@ -495,7 +496,7 @@ format_printf(const char *fmt, ...)
 static void *
 format_cb_status_animation_frame(struct format_tree *ft)
 {
-	struct client	*c = ft->client;
+	struct client	*c = ft->status_client;
 	uint64_t	 interval;
 
 	if (c == NULL || c->session == NULL || (~ft->flags & FORMAT_STATUS))
@@ -3369,6 +3370,7 @@ format_create(struct client *c, struct cmdq_item *item, int tag, int flags)
 
 	if (c != NULL) {
 		ft->client = c;
+		ft->status_client = c;
 		ft->client->references++;
 	}
 	ft->item = item;
@@ -4089,6 +4091,7 @@ format_loop_sessions(struct format_expand_state *es, const char *fmt)
 	RB_FOREACH(s, sessions, &sessions) {
 		format_log(es, "session loop: $%u", s->id);
 		nft = format_create(c, item, FORMAT_NONE, ft->flags);
+		nft->status_client = ft->status_client;
 		format_defaults(nft, ft->c, s, NULL, NULL);
 		format_copy_state(&next, es, 0);
 		next.ft = nft;
@@ -4164,6 +4167,7 @@ format_loop_windows(struct format_expand_state *es, const char *fmt)
 		else
 			use = all;
 		nft = format_create(c, item, FORMAT_WINDOW|w->id, ft->flags);
+		nft->status_client = ft->status_client;
 		format_defaults(nft, ft->c, ft->s, wl, NULL);
 		format_copy_state(&next, es, 0);
 		next.ft = nft;
@@ -4216,6 +4220,7 @@ format_loop_panes(struct format_expand_state *es, const char *fmt)
 		else
 			use = all;
 		nft = format_create(c, item, FORMAT_PANE|wp->id, ft->flags);
+		nft->status_client = ft->status_client;
 		format_defaults(nft, ft->c, ft->s, ft->wl, wp);
 		format_copy_state(&next, es, 0);
 		next.ft = nft;
@@ -4253,6 +4258,7 @@ format_loop_clients(struct format_expand_state *es, const char *fmt)
 	TAILQ_FOREACH(c, &clients, entry) {
 		format_log(es, "client loop: %s", c->name);
 		nft = format_create(c, item, 0, ft->flags);
+		nft->status_client = ft->status_client;
 		format_defaults(nft, c, ft->s, ft->wl, ft->wp);
 		format_copy_state(&next, es, 0);
 		next.ft = nft;
