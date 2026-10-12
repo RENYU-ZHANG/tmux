@@ -28,6 +28,15 @@ the existing flat-menu argument format.
   cells retain their source columns.
 - `display-menu -N` selects on mouse press, ignores releases and drags, and
   dismisses on a press outside the complete menu hierarchy.
+- `display-menu -N -R` opts a root into replacement by a fresh plain right
+  press anywhere, including over a submenu. The entire old hierarchy closes
+  before the same press follows normal bindings at its fresh coordinates.
+  The caller regenerates its target and content. Releases, drags, modifiers
+  and unopted menus retain their existing behavior. This root does not hold
+  the client command queue, owns its opening event, and handles input
+  queued during generation against the current hierarchy. Rapid replacement
+  presses reset their own double/triple classification and reach the down
+  binding. `-R` requires `-N`.
 - While a popup is open, wheel events outside its rectangle follow normal tmux
   routing to the pane under the pointer without closing the popup. The usual
   `WheelUpPane` or `WheelDownPane` binding receives the original coordinates;

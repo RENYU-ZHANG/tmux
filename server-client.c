@@ -590,6 +590,14 @@ server_client_exec(struct client *c, const char *cmd)
 	free(msg);
 }
 
+/* Replacement presses must not become second/triple clicks. */
+static void
+server_client_reset_click(struct client *c)
+{
+	evtimer_del(&c->click_timer);
+	c->flags &= ~(CLIENT_DOUBLECLICK|CLIENT_TRIPLECLICK);
+}
+
 /* Check for mouse keys. */
 static key_code
 server_client_check_mouse(struct client *c, struct key_event *event)
@@ -1900,7 +1908,7 @@ server_client_key_callback(struct cmdq_item *item, void *data)
 	struct timeval			 tv;
 	struct key_table		*table, *first;
 	struct key_binding		*bd;
-	int				 xtimeout;
+	int				 xtimeout, pending;
 	uint64_t			 flags, prefix_delay;
 	struct cmd_find_state		 fs;
 	key_code			 key0, prefix, prefix2;
@@ -1908,6 +1916,15 @@ server_client_key_callback(struct cmdq_item *item, void *data)
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
 		goto out;
+	/* Recheck input read before a generated -R menu appeared. */
+	pending = menu_pending_key(c, event);
+	if (pending >= 0) {
+		if (pending != 0)
+			server_client_clear_overlay(c);
+		if (pending != OVERLAY_KEY_CLEAR_PASSTHROUGH)
+			goto out;
+		server_client_reset_click(c);
+	}
 	wl = s->curw;
 
 	/* Update the activity timer. */
@@ -2180,6 +2197,10 @@ server_client_handle_key(struct client *c, struct key_event *event)
 			case 1:
 				server_client_clear_overlay(c);
 				return (0);
+			case OVERLAY_KEY_CLEAR_PASSTHROUGH:
+				server_client_clear_overlay(c);
+				server_client_reset_click(c);
+				break;
 			case OVERLAY_KEY_PASSTHROUGH:
 			case OVERLAY_KEY_PASSTHROUGH_QUEUED:
 				/*

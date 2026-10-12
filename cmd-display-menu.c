@@ -42,8 +42,8 @@ const struct cmd_entry cmd_display_menu_entry = {
 	.name = "display-menu",
 	.alias = "menu",
 
-	.args = { "b:c:C:H:s:S:LMNOt:T:x:y:", 1, -1, cmd_display_menu_args_parse },
-	.usage = "[-LMNO] [-b border-lines] [-c target-client] "
+	.args = { "b:c:C:H:s:S:LMNORt:T:x:y:", 1, -1, cmd_display_menu_args_parse },
+	.usage = "[-LMNOR] [-b border-lines] [-c target-client] "
 		 "[-C starting-choice] [-H selected-style] [-s style] "
 		 "[-S border-style] " CMD_TARGET_PANE_USAGE "[-T title] "
 		 "[-x position] [-y position] name key command ...",
@@ -394,6 +394,10 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 	struct options_entry	*oe;
 
 
+	if (args_has(args, 'R') && !args_has(args, 'N')) {
+		cmdq_error(item, "-R requires -N");
+		return (CMD_RETURN_ERROR);
+	}
 	if (tc->overlay_draw != NULL)
 		return (CMD_RETURN_NORMAL);
 
@@ -481,12 +485,14 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 		flags |= MENU_STAYOPEN;
 	if (args_has(args, 'N'))
 		flags |= MENU_CONTEXT;
+	if (args_has(args, 'R'))
+		flags |= MENU_REOPEN;
 	if (!event->m.valid && !args_has(args, 'M'))
 		flags |= MENU_NOMOUSE;
 	if (menu_display(menu, flags, starting_choice, item, px, py, tc, lines,
 	    style, selected_style, border_style, target, NULL, NULL) != 0)
 		return (CMD_RETURN_NORMAL);
-	return (CMD_RETURN_WAIT);
+	return (flags & MENU_REOPEN ? CMD_RETURN_NORMAL : CMD_RETURN_WAIT);
 }
 
 static enum cmd_retval

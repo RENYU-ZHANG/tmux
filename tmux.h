@@ -1827,6 +1827,7 @@ typedef void (*overlay_free_cb)(struct client *, void *);
 typedef void (*overlay_resize_cb)(struct client *, void *);
 #define OVERLAY_KEY_PASSTHROUGH 2
 #define OVERLAY_KEY_PASSTHROUGH_QUEUED 3
+#define OVERLAY_KEY_CLEAR_PASSTHROUGH 4
 struct client {
 	const char		*name;
 	struct tmuxpeer		*peer;
@@ -3427,6 +3428,7 @@ __dead void printflike(1, 2) fatalx(const char *, ...);
 #define MENU_TAB 0x2
 #define MENU_STAYOPEN 0x4
 #define MENU_CONTEXT 0x8
+#define MENU_REOPEN 0x10
 #define MENU_CHOICE_NONE -1
 #define MENU_CHOICE_UP -2
 #define MENU_CHOICE_DOWN -3
@@ -3454,6 +3456,7 @@ void		 menu_check_cb(struct client *, void *, u_int, u_int, u_int,
 		    struct overlay_ranges *);
 void		 menu_draw_cb(struct client *, void *,
 		    struct screen_redraw_ctx *);
+int		 menu_pending_key(struct client *, struct key_event *);
 void		 menu_free_cb(struct client *, void *);
 int		 menu_key_cb(struct client *, void *, struct key_event *);
 

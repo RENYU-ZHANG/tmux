@@ -6491,7 +6491,7 @@ the default is
 .Ql y .
 .Tg menu
 .It Xo Ic display-menu
-.Op Fl LMNO
+.Op Fl LMNOR
 .Op Fl b Ar border-lines
 .Op Fl c Ar target-client
 .Op Fl C Ar starting-choice
@@ -6614,6 +6614,16 @@ key bindings do so.
 enables context-menu mouse handling. Pointer motion changes the highlighted
 item, a left-button press chooses the item under the pointer, and a press
 outside dismisses the menu. Releases and button drags are ignored.
+.Pp
+.Fl R
+requires
+.Fl N
+and replaces the complete hierarchy on a fresh unmodified right-button
+press, then routes that press through ordinary mouse bindings at its new
+coordinates. The caller regenerates the menu and its target. This mode does
+not hold the client command queue; input queued during generation is
+handled against the current hierarchy. Replacement presses use down bindings
+even when repeated rapidly. Unopted menus retain their previous behavior.
 .Pp
 .Fl L
 enables nested menu arguments. A command of

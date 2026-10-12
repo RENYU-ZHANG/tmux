@@ -35,6 +35,8 @@ struct menu_level {
 
 struct menu_data {
 	struct cmdq_item	*item;
+	struct key_event	 opening_event;
+	int			 opening_event_valid;
 	int			 flags;
 
 	struct grid_cell	 style;
@@ -721,6 +723,11 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 			return (0);
 		}
 		if (md->flags & MENU_CONTEXT) {
+			/* Route only a fresh, unmodified physical right press. */
+			if ((md->flags & MENU_REOPEN) &&
+			    event->key == KEYC_MOUSE && m->b == MOUSE_BUTTON_3 &&
+			    !menu_mouse_release(event))
+				return (OVERLAY_KEY_CLEAR_PASSTHROUGH);
 			if (menu_mouse_motion(event)) {
 				level = menu_level_at(md, m->x, m->y);
 				if (level < 0)
@@ -888,7 +895,9 @@ chosen:
 	    return (1);
 	}
 
-	if (md->item != NULL)
+	if (md->opening_event_valid)
+		event = &md->opening_event;
+	else if (md->item != NULL)
 		event = cmdq_get_event(md->item);
 	else
 		event = NULL;
@@ -947,7 +956,12 @@ menu_prepare(struct menu *menu, int flags, int starting_choice,
 
 	md = xcalloc(1, sizeof *md);
 	ml = &md->levels[0];
-	md->item = item;
+	md->item = (flags & MENU_REOPEN) ? NULL : item;
+	if ((flags & MENU_REOPEN) && item != NULL) {
+		memcpy(&md->opening_event, cmdq_get_event(item),
+		    sizeof md->opening_event);
+		md->opening_event_valid = 1;
+	}
 	md->flags = flags;
 	md->border_lines = lines;
 	md->root = menu;
@@ -991,4 +1005,18 @@ menu_display(struct menu *menu, int flags, int starting_choice,
 	server_client_set_overlay(c, 0, menu_check_cb, menu_mode_cb, menu_draw_cb,
 	    menu_key_cb, menu_free_cb, NULL, md);
 	return (0);
+}
+
+/* Input may have queued while the opted root was being generated. */
+int
+menu_pending_key(struct client *c, struct key_event *event)
+{
+	struct menu_data *md;
+
+	if ((c->flags & CLIENT_READONLY) || c->overlay_key != menu_key_cb)
+		return (-1);
+	md = c->overlay_data;
+	if (~md->flags & MENU_REOPEN)
+		return (-1);
+	return (menu_key_cb(c, md, event));
 }
