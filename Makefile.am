@@ -160,6 +160,7 @@ dist_tmux_SOURCES = \
 	layout.c \
 	log.c \
 	menu.c \
+	menu-view.c \
 	mode-tree.c \
 	names.c \
 	notify.c \

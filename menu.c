@@ -23,16 +23,6 @@
 
 #include "tmux.h"
 
-struct menu_level {
-	struct menu		*menu;
-	struct screen		 s;
-	u_int			 px;
-	u_int			 py;
-	u_int			 top;
-	u_int			 visible;
-	int			 choice;
-};
-
 struct menu_data {
 	struct cmdq_item	*item;
 	int			 flags;
@@ -44,7 +34,7 @@ struct menu_data {
 
 	struct cmd_find_state	 fs;
 	struct menu		*root;
-	struct menu_level	 levels[MENU_MAX_LEVELS];
+	struct menu_view	 levels[MENU_MAX_LEVELS];
 	u_int			 depth;
 
 	menu_choice_cb		 cb;
@@ -265,104 +255,14 @@ menu_move_choice(struct menu *menu, int choice, int direction, u_int amount,
 	return (choice);
 }
 
-static void
-menu_level_visible(struct menu_level *ml)
-{
-	u_int	maximum, rows;
-
-	if (ml->choice < 0)
-		return;
-	rows = ml->visible;
-	if (ml->visible > 2 && ml->top != 0)
-		rows--;
-	if (ml->visible > 1 && ml->top + rows < ml->menu->count)
-		rows--;
-	if (rows != 0 && (u_int)ml->choice >= ml->top &&
-	    (u_int)ml->choice < ml->top + rows)
-		return;
-
-	if (ml->menu->count <= ml->visible)
-		maximum = 0;
-	else if (ml->visible > 1)
-		maximum = ml->menu->count - ml->visible + 1;
-	else
-		maximum = ml->menu->count - 1;
-	if ((u_int)ml->choice < ml->top)
-		ml->top = ml->choice;
-	else if (ml->visible > 2 &&
-	    (u_int)ml->choice > ml->visible - 3)
-		ml->top = ml->choice - ml->visible + 3;
-	else
-		ml->top = ml->choice;
-	if (ml->top > maximum)
-		ml->top = maximum;
-}
-
 static int
-menu_level_has_up(struct menu_level *ml)
-{
-	/* With two rows, prefer the down indicator to hiding all content. */
-	return (ml->visible > 2 && ml->top != 0);
-}
-
-static int
-menu_level_has_down(struct menu_level *ml)
-{
-	u_int	rows = ml->visible;
-
-	if (ml->visible <= 1)
-		return (0);
-	if (menu_level_has_up(ml))
-		rows--;
-	return (ml->top + rows < ml->menu->count);
-}
-
-static u_int
-menu_level_item_rows(struct menu_level *ml)
-{
-	u_int	rows = ml->visible;
-
-	if (menu_level_has_up(ml))
-		rows--;
-	if (menu_level_has_down(ml))
-		rows--;
-	return (rows);
-}
-
-static u_int
-menu_level_choice_row(struct menu_level *ml, int choice)
-{
-	return (menu_level_has_up(ml) + choice - ml->top);
-}
-
-static int
-menu_level_init(struct menu_data *md, struct menu_level *ml,
+menu_level_init(struct menu_data *md, struct menu_view *ml,
     struct menu *menu, int choice, u_int px, u_int py, struct client *c)
 {
-	u_int	visible;
-
-	if (c->tty.sx < menu->width + 4 || c->tty.sy < 3 || menu->count == 0)
+	if (menu_view_init(ml, menu,
+	    choice < 0 ? MENU_CHOICE_NONE : menu_find_choice(menu, choice, 1),
+	    px, py, c->tty.sx, c->tty.sy) != 0)
 		return (-1);
-	visible = menu->count;
-	if (visible + 2 > c->tty.sy)
-		visible = c->tty.sy - 2;
-	if (px + menu->width + 4 > c->tty.sx)
-		px = c->tty.sx - menu->width - 4;
-	if (py + visible + 2 > c->tty.sy)
-		py = c->tty.sy - visible - 2;
-
-	memset(ml, 0, sizeof *ml);
-	ml->menu = menu;
-	ml->visible = visible;
-	if (choice < 0)
-		ml->choice = MENU_CHOICE_NONE;
-	else
-		ml->choice = menu_find_choice(menu, choice, 1);
-	ml->px = px;
-	ml->py = py;
-	menu_level_visible(ml);
-
-	screen_init(&ml->s, menu->width + 4, visible + 2, 0);
 	if (~md->flags & MENU_NOMOUSE)
 		ml->s.mode |= (MODE_MOUSE_ALL|MODE_MOUSE_BUTTON);
 	ml->s.mode &= ~MODE_CURSOR;
@@ -375,9 +275,7 @@ menu_pop(struct menu_data *md, struct client *c, u_int depth)
 	int	changed = 0;
 
 	while (md->depth > depth) {
-		screen_free(&md->levels[md->depth].s);
-		memset(&md->levels[md->depth], 0,
-		    sizeof md->levels[md->depth]);
+		menu_view_free(&md->levels[md->depth]);
 		md->depth--;
 		changed = 1;
 	}
@@ -395,7 +293,7 @@ menu_redraw(struct client *c)
 static int
 menu_open_submenu(struct menu_data *md, struct client *c)
 {
-	struct menu_level	*parent = &md->levels[md->depth], *child;
+	struct menu_view	*parent = &md->levels[md->depth], *child;
 	struct menu		*submenu;
 	u_int			 px, py, width, visible;
 
@@ -417,7 +315,7 @@ menu_open_submenu(struct menu_data *md, struct client *c)
 	if (visible + 2 > c->tty.sy)
 		visible = c->tty.sy - 2;
 	py = parent->py + 1 +
-	    menu_level_choice_row(parent, parent->choice);
+	    menu_view_choice_row(parent, parent->choice);
 	if (py + visible + 2 > c->tty.sy)
 		py = c->tty.sy - visible - 2;
 
@@ -432,7 +330,7 @@ menu_open_submenu(struct menu_data *md, struct client *c)
 static int
 menu_level_at(struct menu_data *md, u_int x, u_int y)
 {
-	struct menu_level	*ml;
+	struct menu_view	*ml;
 	int			 depth;
 
 	for (depth = md->depth; depth >= 0; depth--) {
@@ -445,7 +343,7 @@ menu_level_at(struct menu_data *md, u_int x, u_int y)
 }
 
 static int
-menu_mouse_choice(struct menu_level *ml, u_int x, u_int y)
+menu_mouse_choice(struct menu_view *ml, u_int x, u_int y)
 {
 	u_int	row, item_rows;
 
@@ -453,13 +351,13 @@ menu_mouse_choice(struct menu_level *ml, u_int x, u_int y)
 	    y < ml->py + 1 || y >= ml->py + 1 + ml->visible)
 		return (MENU_CHOICE_NONE);
 	row = y - ml->py - 1;
-	if (menu_level_has_up(ml)) {
+	if (menu_view_has_up(ml)) {
 		if (row == 0)
 			return (MENU_CHOICE_UP);
 		row--;
 	}
-	item_rows = menu_level_item_rows(ml);
-	if (menu_level_has_down(ml) && row == item_rows)
+	item_rows = menu_view_item_rows(ml);
+	if (menu_view_has_down(ml) && row == item_rows)
 		return (MENU_CHOICE_DOWN);
 	if (row >= item_rows || ml->top + row >= ml->menu->count)
 		return (MENU_CHOICE_NONE);
@@ -515,35 +413,18 @@ menu_mouse_wheel_down(struct key_event *event)
 }
 
 static int
-menu_scroll(struct menu_level *ml, int direction, u_int amount)
+menu_scroll(struct menu_view *ml, int direction, u_int amount)
 {
-	u_int	old, maximum, first, last, rows;
+	u_int	first, last, rows;
 	int	choice, delta;
 
-	if (ml->menu->count <= ml->visible)
+	delta = menu_view_scroll(ml, direction, amount);
+	if (delta == 0)
 		return (0);
-	old = ml->top;
-	if (ml->visible > 1)
-		maximum = ml->menu->count - ml->visible + 1;
-	else
-		maximum = ml->menu->count - 1;
-	if (direction > 0) {
-		if (ml->top + amount > maximum)
-			ml->top = maximum;
-		else
-			ml->top += amount;
-	} else if (ml->top < amount)
-		ml->top = 0;
-	else
-		ml->top -= amount;
-	if (old == ml->top)
-		return (0);
-
 	if (ml->choice >= 0) {
-		delta = (int)ml->top - (int)old;
 		choice = ml->choice + delta;
 		first = ml->top;
-		rows = menu_level_item_rows(ml);
+		rows = menu_view_item_rows(ml);
 		if (rows == 0) {
 			ml->choice = MENU_CHOICE_NONE;
 			return (1);
@@ -574,7 +455,7 @@ struct screen *
 menu_mode_cb(__unused struct client *c, void *data, u_int *cx, u_int *cy)
 {
 	struct menu_data	*md = data;
-	struct menu_level	*ml = &md->levels[md->depth];
+	struct menu_view	*ml = &md->levels[md->depth];
 
 	*cx = ml->px + 2;
 	if (ml->choice == MENU_CHOICE_NONE)
@@ -585,7 +466,7 @@ menu_mode_cb(__unused struct client *c, void *data, u_int *cx, u_int *cy)
 		*cy = ml->py + ml->visible;
 	else
 		*cy = ml->py + 1 +
-		    menu_level_choice_row(ml, ml->choice);
+		    menu_view_choice_row(ml, ml->choice);
 
 	return (&ml->s);
 }
@@ -596,7 +477,7 @@ menu_check_cb(__unused struct client *c, void *data, u_int px, u_int py,
     u_int nx, struct overlay_ranges *r)
 {
 	struct menu_data	*md = data;
-	struct menu_level	*ml;
+	struct menu_view	*ml;
 	u_int			 i;
 
 	memset(r, 0, sizeof *r);
@@ -615,7 +496,7 @@ menu_draw_check_cb(__unused struct client *c, void *data, u_int px, u_int py,
     u_int nx, struct overlay_ranges *r)
 {
 	struct menu_draw_data	*dd = data;
-	struct menu_level	*ml;
+	struct menu_view	*ml;
 	u_int			 i;
 
 	memset(r, 0, sizeof *r);
@@ -635,8 +516,7 @@ menu_draw_cb(struct client *c, void *data,
 	struct menu_data	*md = data;
 	struct tty		*tty = &c->tty;
 	struct screen		*s;
-	struct menu_level	*ml;
-	struct screen_write_ctx	 ctx;
+	struct menu_view	*ml;
 	u_int			 depth, i;
 	overlay_check_cb	 checkcb = c->overlay_check;
 	void			*checkdata = c->overlay_data;
@@ -649,13 +529,8 @@ menu_draw_cb(struct client *c, void *data,
 		c->overlay_data = &dd;
 		ml = &md->levels[depth];
 		s = &ml->s;
-		screen_write_start(&ctx, s);
-		screen_write_clearscreen(&ctx, 8);
-		screen_write_menu(&ctx, ml->menu, ml->choice, ml->top,
-		    ml->visible, menu_level_has_up(ml),
-		    menu_level_has_down(ml), md->border_lines, &md->style,
+		menu_view_draw(ml, md->border_lines, &md->style,
 		    &md->border_style, &md->selected_style);
-		screen_write_stop(&ctx);
 
 		for (i = 0; i < screen_size_y(s); i++) {
 			tty_draw_line(tty, s, 0, i, ml->menu->width + 4,
@@ -680,7 +555,7 @@ menu_free_cb(__unused struct client *c, void *data)
 		md->cb(md->root, UINT_MAX, KEYC_NONE, md->data);
 
 	for (i = 0; i <= md->depth; i++)
-		screen_free(&md->levels[i].s);
+		menu_view_free(&md->levels[i]);
 	menu_free(md->root);
 	free(md);
 }
@@ -689,7 +564,7 @@ int
 menu_key_cb(struct client *c, void *data, struct key_event *event)
 {
 	struct menu_data		*md = data;
-	struct menu_level		*ml = &md->levels[md->depth];
+	struct menu_view		*ml = &md->levels[md->depth];
 	struct menu			*menu = ml->menu;
 	struct mouse_event		*m = &event->m;
 	u_int				 i, amount;
@@ -794,7 +669,7 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 	case KEYC_UP:
 	case 'k':
 		ml->choice = menu_move_choice(menu, ml->choice, -1, 1, 1);
-		menu_level_visible(ml);
+		menu_view_ensure_visible(ml);
 		menu_redraw(c);
 		return (0);
 	case KEYC_BSPACE:
@@ -810,32 +685,32 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 	case KEYC_DOWN:
 	case 'j':
 		ml->choice = menu_move_choice(menu, ml->choice, 1, 1, 1);
-		menu_level_visible(ml);
+		menu_view_ensure_visible(ml);
 		menu_redraw(c);
 		return (0);
 	case KEYC_PPAGE:
 	case 'b'|KEYC_CTRL:
 		amount = (ml->visible > 1 ? ml->visible - 1 : 1);
 		ml->choice = menu_move_choice(menu, ml->choice, -1, amount, 0);
-		menu_level_visible(ml);
+		menu_view_ensure_visible(ml);
 		menu_redraw(c);
 		return (0);
 	case KEYC_NPAGE:
 		amount = (ml->visible > 1 ? ml->visible - 1 : 1);
 		ml->choice = menu_move_choice(menu, ml->choice, 1, amount, 0);
-		menu_level_visible(ml);
+		menu_view_ensure_visible(ml);
 		menu_redraw(c);
 		return (0);
 	case 'g':
 	case KEYC_HOME:
 		ml->choice = menu_find_choice(menu, 0, 1);
-		menu_level_visible(ml);
+		menu_view_ensure_visible(ml);
 		menu_redraw(c);
 		return (0);
 	case 'G':
 	case KEYC_END:
 		ml->choice = menu_find_choice(menu, count - 1, -1);
-		menu_level_visible(ml);
+		menu_view_ensure_visible(ml);
 		menu_redraw(c);
 		return (0);
 	case 'f'|KEYC_CTRL:
@@ -935,7 +810,7 @@ menu_prepare(struct menu *menu, int flags, int starting_choice,
     void *data)
 {
 	struct menu_data	*md;
-	struct menu_level	*ml;
+	struct menu_view	*ml;
 	int			 choice = -1;
 	struct options		*o = c->session->curw->window->options;
 

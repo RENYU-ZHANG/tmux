@@ -3,6 +3,12 @@
 This branch is based on tmux 3.5a and extends `display-menu` without changing
 the existing flat-menu argument format.
 
+Menu levels now consume the shared flat viewport in
+[Shared drawing and views](README.shared-views.md#shared-drawing-and-views).
+The extraction preserves this deployed profile's menu, exterior-wheel and
+animation policies. It is also verified as a separate menu feature over upstream
+plus the shared foundations, without those sibling features.
+
 ## Features
 
 - Menus taller than the client use a viewport instead of failing to open.

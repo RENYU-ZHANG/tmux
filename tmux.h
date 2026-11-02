@@ -1043,6 +1043,17 @@ struct menu {
 };
 typedef void (*menu_choice_cb)(struct menu *, u_int, key_code, void *);
 
+/* A borrowed flat list and its owned screen; input policy is external. */
+#define MENU_CHOICE_NONE -1
+#define MENU_CHOICE_UP -2
+#define MENU_CHOICE_DOWN -3
+struct menu_view {
+	struct menu	*menu;
+	struct screen	 s;
+	u_int		 px, py, top, visible;
+	int		 choice;
+};
+
 /*
  * Window mode. Windows can be in several modes and this is used to call the
  * right function to handle input and output.
@@ -1808,9 +1819,8 @@ struct client_window {
 RB_HEAD(client_windows, client_window);
 
 /* Visible areas not obstructed by overlays. */
-#define MENU_MAX_LEVELS 16
-/* A maximum-depth menu may leave 17 spans; a popup can leave one more. */
-#define OVERLAY_MAX_RANGES (MENU_MAX_LEVELS + 2)
+/* Bounded shared capacity; consumers must stay within this span budget. */
+#define OVERLAY_MAX_RANGES 18
 struct overlay_ranges {
 	u_int	px[OVERLAY_MAX_RANGES];
 	u_int	nx[OVERLAY_MAX_RANGES];
@@ -3009,8 +3019,8 @@ void	 screen_write_hline(struct screen_write_ctx *, u_int, int, int,
 	     enum box_lines, const struct grid_cell *);
 void	 screen_write_vline(struct screen_write_ctx *, u_int, int, int);
 void	 screen_write_menu(struct screen_write_ctx *, struct menu *, int,
-	     u_int, u_int, int, int, enum box_lines, const struct grid_cell *,
-	     const struct grid_cell *, const struct grid_cell *);
+	     enum box_lines, const struct grid_cell *, const struct grid_cell *,
+	     const struct grid_cell *);
 void	 screen_write_box(struct screen_write_ctx *, u_int, u_int,
              enum box_lines, const struct grid_cell *, const char *);
 void	 screen_write_preview(struct screen_write_ctx *, struct screen *, u_int,
@@ -3427,13 +3437,28 @@ __dead void printflike(1, 2) fatal(const char *, ...);
 __dead void printflike(1, 2) fatalx(const char *, ...);
 
 /* menu.c */
+/* menu-view.c: shared drawing, with no overlay or input ownership. */
+int		 menu_view_init(struct menu_view *, struct menu *, int,
+		     u_int, u_int, u_int, u_int);
+void		 menu_view_free(struct menu_view *);
+void		 menu_view_select(struct menu_view *, int);
+void		 menu_view_ensure_visible(struct menu_view *);
+int		 menu_view_scroll(struct menu_view *, int, u_int);
+int		 menu_view_has_up(struct menu_view *);
+int		 menu_view_has_down(struct menu_view *);
+u_int		 menu_view_item_rows(struct menu_view *);
+u_int		 menu_view_choice_row(struct menu_view *, int);
+void		 menu_view_draw(struct menu_view *, enum box_lines,
+		     const struct grid_cell *, const struct grid_cell *,
+		     const struct grid_cell *);
 #define MENU_NOMOUSE 0x1
 #define MENU_TAB 0x2
 #define MENU_STAYOPEN 0x4
 #define MENU_CONTEXT 0x8
-#define MENU_CHOICE_NONE -1
-#define MENU_CHOICE_UP -2
-#define MENU_CHOICE_DOWN -3
+#define MENU_MAX_LEVELS 16
+#if MENU_MAX_LEVELS + 2 > OVERLAY_MAX_RANGES
+#error menu depth exceeds shared overlay span capacity
+#endif
 struct menu	*menu_create(const char *);
 void		 menu_add_items(struct menu *, const struct menu_item *,
 		    struct cmdq_item *, struct client *,
