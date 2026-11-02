@@ -353,6 +353,7 @@ tty_start_tty(struct tty *tty)
 	evtimer_add(&tty->start_timer, &tv);
 
 	tty->flags |= TTY_STARTED;
+	tty_kitty_update(tty);
 	tty_invalidate(tty);
 
 	if (tty->ccolour != -1)
@@ -410,6 +411,7 @@ tty_stop_tty(struct tty *tty)
 	if (!(tty->flags & TTY_STARTED))
 		return;
 	tty->flags &= ~TTY_STARTED;
+	tty_kitty_stop(tty);
 
 	evtimer_del(&tty->start_timer);
 
@@ -502,7 +504,7 @@ tty_update_features(struct tty *tty)
 		tty_putcode(tty, TTYC_ENMG);
 	if (options_get_number(global_options, "extended-keys"))
 		tty_puts(tty, tty_term_string(tty->term, TTYC_ENEKS));
-	if (options_get_number(global_options, "focus-events"))
+	if (options_get_number(global_options, "focus-events") || tty_kitty_ready(tty))
 		tty_puts(tty, tty_term_string(tty->term, TTYC_ENFCS));
 	if (tty->term->flags & TERM_VT100LIKE)
 		tty_puts(tty, "\033[?7727h");

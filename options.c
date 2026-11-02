@@ -1127,6 +1127,13 @@ options_push_changes(const char *name)
 
 	log_debug("%s: %s", __func__, name);
 
+	if (strcmp(name, "extended-keys-kitty") == 0) {
+		TAILQ_FOREACH(loop, &clients, entry) {
+			if (loop->tty.flags & TTY_STARTED)
+				tty_kitty_update(&loop->tty);
+		}
+	}
+
 	if (strcmp(name, "automatic-rename") == 0) {
 		RB_FOREACH(w, windows, &windows) {
 			if (w->active == NULL)

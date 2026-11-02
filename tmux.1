@@ -1617,7 +1617,7 @@ Suspend a client by sending
 (tty stop).
 .Tg switchc
 .It Xo Ic switch-client
-.Op Fl ElnprZ
+.Op Fl ElmnprZ
 .Op Fl c Ar target-client
 .Op Fl t Ar target-session
 .Op Fl T Ar key-table
@@ -1645,6 +1645,27 @@ or
 .Fl p
 is used, the client is moved to the last, next or previous session
 respectively.
+.Pp
+.Fl m
+opens a client-local session menu in most-recently-attached order, with the
+current session first and the next session highlighted.
+It requires successfully negotiated
+.Ic extended-keys-kitty .
+Ctrl-Tab and Ctrl-Shift-Tab cycle forward and backward through a fixed snapshot;
+releasing the final Ctrl key selects the highlighted session.
+Combine with
+.Fl p
+to begin in reverse order.
+Only
+.Fl c
+and
+.Fl p
+may be combined with
+.Fl m .
+Escape, focus loss, resize, detach, an external session change or disabling
+the protocol cancels; other input cancels and continues normally.
+Existing prompts and overlays are not replaced.
+.Pp
 .Fl r
 toggles the client
 .Ic read-only
@@ -4099,6 +4120,19 @@ and as
 .Ql ^[[65;6u
 when set to
 .Ic csi-u .
+.It Xo Ic extended-keys-kitty
+.Op Ic on | off
+.Xc
+Negotiate Kitty keyboard reporting with the outer terminal (off by default).
+This requests disambiguation, event types, alternate keys, all keys and
+associated text before enabling Ctrl-release session switching.
+Panes retain their existing legacy or xterm extended-key protocol.
+Ordinary releases and standalone modifiers are consumed; text, lock modifiers
+and supported shortcuts are adapted to the existing key representation.
+Super, Hyper, Meta and unmapped functional keys are consumed without dispatch.
+The saved keyboard flags are restored on disable, suspend or detach.
+Focus reporting is enabled for cancellation and returns to the configured
+focus policy on disable.
 .It Xo Ic focus-events
 .Op Ic on | off
 .Xc
