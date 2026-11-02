@@ -3,6 +3,9 @@
 This branch is based on tmux 3.5a and extends `display-menu` without changing
 the existing flat-menu argument format.
 
+For local patch structure and contribution rules, see
+[Tmux fork maintenance](CONTRIBUTING.md#tmux-fork-maintenance).
+
 ## Features
 
 - Menus taller than the client use a viewport instead of failing to open.
