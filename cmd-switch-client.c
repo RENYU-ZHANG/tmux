@@ -34,8 +34,8 @@ const struct cmd_entry cmd_switch_client_entry = {
 	.name = "switch-client",
 	.alias = "switchc",
 
-	.args = { "lc:EFnpt:rT:Z", 0, 0, NULL },
-	.usage = "[-ElnprZ] [-c target-client] [-t target-session] "
+	.args = { "lc:EFmnpt:rT:Z", 0, 0, NULL },
+	.usage = "[-ElmnprZ] [-c target-client] [-t target-session] "
 		 "[-T key-table]",
 
 	/* -t is special */
@@ -60,6 +60,22 @@ cmd_switch_client_exec(struct cmd *self, struct cmdq_item *item)
 	struct window_pane	*wp;
 	const char		*tablename;
 	struct key_table	*table;
+	char			*cause;
+
+	if (args_has(args, 'm')) {
+		if (tflag != NULL || args_has(args, 'n') || args_has(args, 'l') ||
+		    args_has(args, 'T') || args_has(args, 'r') || args_has(args, 'E') ||
+		    args_has(args, 'Z') || args_has(args, 'F')) {
+			cmdq_error(item, "-m only accepts -p and -c");
+			return (CMD_RETURN_ERROR);
+		}
+		if (session_mru_start(tc, args_has(args, 'p'), &cause) != 0) {
+			cmdq_error(item, "%s", cause);
+			free(cause);
+			return (CMD_RETURN_ERROR);
+		}
+		return (CMD_RETURN_NORMAL);
+	}
 
 	if (tflag != NULL && tflag[strcspn(tflag, ":.%")] != '\0') {
 		type = CMD_FIND_PANE;

@@ -663,10 +663,15 @@ tty_keys_next(struct tty *tty)
 	const char		*buf;
 	size_t			 len, size;
 	cc_t			 bspace;
-	int			 delay, expired = 0, n;
+	int			 delay, expired = 0, n, kitty_partial = 0;
 	key_code		 key, onlykey;
 	struct mouse_event	 m = { 0 };
 	struct key_event	*event;
+	key_code		 kitty_keys[TTY_KITTY_MAX_KEYS];
+	u_int			 kitty_count, i;
+	struct utf8_data	 ud;
+	utf8_char		 uc;
+	enum utf8_state		 more;
 
 	/* Get key buffer. */
 	buf = EVBUFFER_DATA(tty->in);
@@ -674,6 +679,70 @@ tty_keys_next(struct tty *tty)
 	if (len == 0)
 		return (0);
 	log_debug("%s: keys are %zu (%.*s)", c->name, len, (int)len, buf);
+
+	/* Paste is literal data, including apparent keyboard or query replies. */
+	if (tty->flags & TTY_KITTY_PASTE) {
+		if (!memcmp(buf, "\033[201~", len < 6 ? len : 6)) {
+			if (len < 6) {
+				kitty_partial = 2;
+				goto partial_key;
+			}
+			key = KEYC_PASTE_END;
+			size = 6;
+			goto complete_key;
+		}
+		key = (u_char)*buf;
+		size = 1;
+		more = utf8_open(&ud, (u_char)*buf);
+		if (more == UTF8_MORE) {
+			if (len < ud.size)
+				goto partial_key;
+			for (i = 1; i < ud.size; i++)
+				more = utf8_append(&ud, (u_char)buf[i]);
+			if (more == UTF8_DONE && utf8_from_data(&ud, &uc) == UTF8_DONE) {
+				key = uc;
+				size = ud.size;
+			}
+		}
+		goto complete_key;
+	}
+
+	/* Protect a fragmented paste opener before keyboard mode is enabled. */
+	if ((tty->kitty_queries != 0 || (tty->flags & TTY_KITTY_INPUT)) &&
+	    len < 6 && !memcmp(buf, "\033[200~", len)) {
+		kitty_partial = 2;
+		goto partial_key;
+	}
+
+	switch (tty_kitty_query(tty, buf, len, &size)) {
+	case 0:
+		key = KEYC_UNKNOWN;
+		goto complete_key;
+	case 1:
+		kitty_partial = 1;
+		goto partial_key;
+	}
+	switch (tty_kitty_keys(tty, buf, len, &size, kitty_keys, &kitty_count)) {
+	case 0:
+		evbuffer_drain(tty->in, size);
+		if (event_initialized(&tty->key_timer))
+			evtimer_del(&tty->key_timer);
+		tty->flags &= ~(TTY_TIMER|TTY_KITTY_TIMER);
+		for (i = 0; i < kitty_count; i++) {
+			event = xcalloc(1, sizeof *event);
+			event->key = kitty_keys[i];
+			event->flags = KEY_EVENT_ENCODED;
+			if (!server_client_handle_key(c, event))
+				free(event);
+		}
+		return (1);
+	case 1:
+		kitty_partial = 1;
+		goto partial_key;
+	case 2:
+		kitty_partial = 2;
+		goto partial_key;
+	}
 
 	/* Is this a clipboard response? */
 	switch (tty_keys_clipboard(tty, buf, len, &size)) {
@@ -827,18 +896,48 @@ first_key:
 partial_key:
 	log_debug("%s: partial key %.*s", c->name, (int)len, buf);
 
+	/* Promote a lone-Escape timer once when the CSI prefix arrives later. */
+	if (kitty_partial && len >= 2 && buf[0] == '\033' && buf[1] == '[' &&
+	    !(tty->flags & TTY_KITTY_TIMER)) {
+		tty->flags |= TTY_KITTY_TIMER;
+		goto start_timer;
+	}
+
 	/* If timer is going, check for expiration. */
 	if (tty->flags & TTY_TIMER) {
 		if (evtimer_initialized(&tty->key_timer) &&
 		    !evtimer_pending(&tty->key_timer, NULL)) {
+			if (tty->flags & TTY_KITTY_PASTE) {
+				key = (u_char)buf[0];
+				size = 1;
+				goto complete_key;
+			}
+			/* Ambiguous restored-mode prefixes still belong to legacy input. */
+			if (kitty_partial == 1 && len >= 3 &&
+			    buf[0] == '\033' && buf[1] == '[' &&
+			    ((buf[2] >= '0' && buf[2] <= '9') || buf[2] == ';' ||
+			    buf[2] == '?')) {
+				if (buf[2] == '?')
+					tty->flags |= TTY_KITTY_QUERY_DISCARD;
+				else
+					tty->flags |= TTY_KITTY_DISCARD;
+				key = KEYC_UNKNOWN;
+				size = len;
+				goto complete_key;
+			}
 			expired = 1;
 			goto first_key;
 		}
 		return (0);
 	}
 
+start_timer:
 	/* Get the time period. */
 	delay = options_get_number(global_options, "escape-time");
+	/* Once CSI has begun, it is not a lone Escape: allow SSH fragmentation. */
+	if (kitty_partial && len >= 2 &&
+	    buf[0] == '\033' && buf[1] == '[' && delay < 250)
+		delay = 250;
 	if (delay == 0)
 		delay = 1;
 	tv.tv_sec = delay / 1000;
@@ -855,6 +954,13 @@ partial_key:
 
 complete_key:
 	log_debug("%s: complete key %.*s %#llx", c->name, (int)size, buf, key);
+	if (tty->kitty_queries != 0 ||
+	    (tty->flags & (TTY_KITTY_INPUT|TTY_KITTY_PASTE))) {
+		if (key == KEYC_PASTE_START)
+			tty->flags |= TTY_KITTY_PASTE;
+		else if (key == KEYC_PASTE_END)
+			tty->flags &= ~TTY_KITTY_PASTE;
+	}
 
 	/*
 	 * Check for backspace key using termios VERASE - the terminfo
@@ -871,7 +977,7 @@ complete_key:
 	/* Remove key timer. */
 	if (event_initialized(&tty->key_timer))
 		evtimer_del(&tty->key_timer);
-	tty->flags &= ~TTY_TIMER;
+	tty->flags &= ~(TTY_TIMER|TTY_KITTY_TIMER);
 
 	/* Check for focus events. */
 	if (key == KEYC_FOCUS_OUT) {

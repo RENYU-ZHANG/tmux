@@ -1408,6 +1408,15 @@ format_cb_client_height(struct format_tree *ft)
 	return (NULL);
 }
 
+/* Callback for client_kitty_state. */
+static void *
+format_cb_client_kitty_state(struct format_tree *ft)
+{
+	if (ft->c != NULL)
+		return (xstrdup(tty_kitty_state(&ft->c->tty)));
+	return (NULL);
+}
+
 /* Callback for client_key_table. */
 static void *
 format_cb_client_key_table(struct format_tree *ft)
@@ -2846,6 +2855,9 @@ static const struct format_table_entry format_table[] = {
 	},
 	{ "client_key_table", FORMAT_TABLE_STRING,
 	  format_cb_client_key_table
+	},
+	{ "client_kitty_state", FORMAT_TABLE_STRING,
+	  format_cb_client_kitty_state
 	},
 	{ "client_last_session", FORMAT_TABLE_STRING,
 	  format_cb_client_last_session

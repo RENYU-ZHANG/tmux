@@ -325,6 +325,14 @@ const struct options_table_entry options_table[] = {
 	  .text = "The format of emitted extended key sequences."
 	},
 
+	{ .name = "extended-keys-kitty",
+	  .type = OPTIONS_TABLE_FLAG,
+	  .scope = OPTIONS_TABLE_SERVER,
+	  .default_num = 0,
+	  .text = "Negotiate outer-terminal Kitty input and Ctrl-release "
+		  "session switching, preserving pane keyboard modes."
+	},
+
 	{ .name = "focus-events",
 	  .type = OPTIONS_TABLE_FLAG,
 	  .scope = OPTIONS_TABLE_SERVER,
