@@ -1,5 +1,15 @@
 # Shared drawing and views
 
+## Input event metadata
+
+Transport provenance belongs to `key_event.flags`, independently of the semantic
+`key` and its modifiers. `KEY_EVENT_ENCODED` identifies framed input that does not
+need legacy timing-based paste detection. Event producers zero-initialize the
+structure; queues and saved events copy the complete event. Menus, prompts and
+popups receive normal keys without depending on a particular terminal adapter.
+
+## Drawing
+
 The shared overlay foundation builds on upstream tmux 3.5a without local feature
 patches. It owns bounded visible-range subtraction and correct glyph positioning
 when an overlay clips text. Consumers supply their rectangles and stacking order;

@@ -1433,8 +1433,10 @@ struct mouse_event {
 };
 
 /* Key event. */
+#define KEY_EVENT_ENCODED 0x1 /* Framed input, not legacy timing-based paste. */
 struct key_event {
 	key_code		key;
+	int			flags;
 	struct mouse_event	m;
 };
 
