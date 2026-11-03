@@ -886,7 +886,7 @@ complete_key:
 
 	/* Fire the key. */
 	if (key != KEYC_UNKNOWN) {
-		event = xmalloc(sizeof *event);
+		event = xcalloc(1, sizeof *event);
 		event->key = key;
 		memcpy(&event->m, &m, sizeof event->m);
 		if (!server_client_handle_key(c, event))
