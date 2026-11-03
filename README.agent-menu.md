@@ -6,6 +6,12 @@ the existing flat-menu argument format.
 For local patch structure and contribution rules, see
 [Tmux fork maintenance](CONTRIBUTING.md#tmux-fork-maintenance).
 
+Menu levels now consume the shared flat viewport in
+[Shared drawing and views](README.shared-views.md#shared-drawing-and-views).
+The extraction preserves the menu and exterior-wheel policies, including
+fresh right-press replacement. Menu policy remains separate from the reusable
+viewport and overlay foundations.
+
 ## Features
 
 - Menus taller than the client use a viewport instead of failing to open.
