@@ -571,6 +571,9 @@ input_key(struct screen *s, struct bufferevent *bev, key_code key)
 	key_code		 newkey;
 	struct utf8_data	 ud;
 
+	if ((key & KEYC_MASK_KEY) == KEYC_CTRL_RELEASE)
+		return (0);
+
 	/* Mouse keys need a pane. */
 	if (KEYC_IS_MOUSE(key))
 		return (0);

@@ -397,6 +397,8 @@ server_client_set_session(struct client *c, struct session *s)
 {
 	struct session	*old = c->session;
 
+	session_mru_cancel(c);
+
 	if (s != NULL && c->session != NULL && c->session != s)
 		c->last_session = c->session;
 	else if (s == NULL)
@@ -1932,6 +1934,9 @@ server_client_key_callback(struct cmdq_item *item, void *data)
 		fatal("gettimeofday failed");
 	session_update_activity(s, &c->activity_time);
 
+	if (session_mru_key(c, event))
+		goto out;
+
 	/* Check for mouse keys. */
 	m->valid = 0;
 	if (key == KEYC_MOUSE || key == KEYC_DOUBLECLICK) {
@@ -1971,6 +1976,7 @@ server_client_key_callback(struct cmdq_item *item, void *data)
 	/* Treat everything as a regular key when pasting is detected. */
 	if (!KEYC_IS_MOUSE(key) &&
 	    (~key & KEYC_SENT) &&
+	    !(event->flags & KEY_EVENT_ENCODED) &&
 	    server_client_assume_paste(s))
 		goto forward_key;
 
@@ -2178,6 +2184,16 @@ server_client_handle_key(struct client *c, struct key_event *event)
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
 		return (0);
 
+	/* Keep gesture events behind the command which opened the view. */
+	if (c->session_mru != NULL) {
+		item = cmdq_get_callback(server_client_key_callback, event);
+		cmdq_append(c, item);
+		return (1);
+	}
+	if ((event->key & KEYC_MASK_KEY) == KEYC_CTRL_RELEASE &&
+	    (c->overlay_draw != NULL || c->prompt_string != NULL))
+		return (0);
+
 	/*
 	 * Key presses in overlay mode and the command prompt are a special
 	 * case. The queue might be blocked so they need to be processed
@@ -2258,8 +2274,13 @@ server_client_loop(void)
 
 	/* Check clients. */
 	TAILQ_FOREACH(c, &clients, entry) {
+		/* Client policy observes adapter loss without a transport->UI call. */
+		if (c->session_mru != NULL &&
+		    (!tty_kitty_ready(&c->tty) || (c->flags & CLIENT_UNATTACHEDFLAGS)))
+			session_mru_cancel(c);
 		server_client_check_exit(c);
 		if (c->session != NULL) {
+			tty_kitty_check_message(&c->tty);
 			server_client_check_modes(c);
 			server_client_check_redraw(c);
 			server_client_reset_state(c);

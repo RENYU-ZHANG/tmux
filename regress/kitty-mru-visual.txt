@@ -1,0 +1,28 @@
+# Replay with agent-tmux-capture --tmux /absolute/path/to/candidate this-file.
+# Synthetic query replies; no terminal or live server is changed.
+size 100 28
+session current
+command sleep 60
+run new-session -d -s second 'sleep 60'
+run new-session -d -s third 'sleep 60'
+run new-session -d -s fourth 'sleep 60'
+run set -s extended-keys-kitty on
+run set -g status-left 'session: #{session_name} '
+run set -g status-left-length 30
+run bind -n C-Tab switch-client -m
+run bind -n C-BTab switch-client -mp
+send '\x1b[?0u'
+send '\x1b[?31u'
+send '\x1b[9;133u'
+wait Sessions
+capture open
+send '\x1b[9;133u'
+capture forward
+send '\x1b[9;134u'
+capture reverse
+sleep 0.3
+capture settled
+resize 42 10
+send '\x1b[9;133u'
+wait Sessions
+capture narrow

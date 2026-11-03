@@ -365,6 +365,9 @@ enum {
 	KEYC_KP_ZERO,
 	KEYC_KP_PERIOD,
 
+	/* Internal outer-terminal event, never forwarded to a pane. */
+	KEYC_CTRL_RELEASE,
+
 	/* End of special keys. */
 	KEYC_BASE_END
 };
@@ -1469,6 +1472,12 @@ struct tty {
 	struct event	 start_timer;
 	struct event	 clipboard_timer;
 	time_t		 last_requests;
+	struct event	 kitty_timer;
+	u_int		 kitty_state;
+	u_int		 kitty_saved_flags;
+	u_int		 kitty_queries;
+	u_int		 kitty_retries;
+	int		 kitty_message_pending;
 
 	u_int		 sx;
 	u_int		 sy;
@@ -1523,6 +1532,12 @@ struct tty {
 #define TTY_HAVEXDA 0x200
 #define TTY_SYNCING 0x400
 #define TTY_HAVEDA2 0x800 /* Secondary DA. */
+#define TTY_KITTY_INPUT 0x1000
+#define TTY_KITTY_SET 0x2000
+#define TTY_KITTY_PASTE 0x4000
+#define TTY_KITTY_DISCARD 0x8000
+#define TTY_KITTY_TIMER 0x10000
+#define TTY_KITTY_QUERY_DISCARD 0x20000
 #define TTY_ALL_REQUEST_FLAGS \
 	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA)
 	int		 flags;
@@ -1846,6 +1861,7 @@ struct client {
 	struct cmdq_list	*queue;
 
 	struct client_windows	 windows;
+	struct session_mru	*session_mru;
 
 	struct control_state	*control_state;
 	u_int			 pause_age;
@@ -2519,6 +2535,23 @@ const struct utf8_data *tty_acs_rounded_borders(int);
 void		tty_keys_build(struct tty *);
 void		tty_keys_free(struct tty *);
 int		tty_keys_next(struct tty *);
+
+/* tty-kitty.c: the outer-terminal adapter, not pane-side Kitty support. */
+#define TTY_KITTY_FLAGS 31
+#define TTY_KITTY_MAX_KEYS 256
+void		tty_kitty_update(struct tty *);
+void		tty_kitty_check_message(struct tty *);
+void		tty_kitty_stop(struct tty *);
+int		tty_kitty_query(struct tty *, const char *, size_t, size_t *);
+int		tty_kitty_keys(struct tty *, const char *, size_t, size_t *,
+		    key_code *, u_int *);
+int		tty_kitty_ready(struct tty *);
+const char	*tty_kitty_state(struct tty *);
+
+/* session-mru.c */
+int		session_mru_start(struct client *, int, char **);
+int		session_mru_key(struct client *, struct key_event *);
+void		session_mru_cancel(struct client *);
 int		tty_keys_colours(struct tty *, const char *, size_t, size_t *,
 		     int *, int *);
 

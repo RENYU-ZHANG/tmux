@@ -4,7 +4,7 @@ CLEANFILES = tmux.1.mdoc tmux.1.man cmd-parse.c
 
 # Distribution tarball options.
 EXTRA_DIST = \
-	CHANGES README README.ja COPYING example_tmux.conf \
+	CHANGES README README.ja README.agent-keyboard.md COPYING example_tmux.conf \
 	osdep-*.c mdoc2man.awk tmux.1
 dist_EXTRA_tmux_SOURCES = compat/*.[ch]
 
@@ -188,6 +188,8 @@ dist_tmux_SOURCES = \
 	tty-acs.c \
 	tty-features.c \
 	tty-keys.c \
+	tty-kitty.c \
+	session-mru.c \
 	tty-term.c \
 	tty.c \
 	utf8-combined.c \

@@ -1,0 +1,23 @@
+# The headless terminal intentionally does not answer Kitty queries.
+# Replay with agent-tmux-capture --tmux /absolute/candidate this-file --json.
+size 80 12
+command cat
+run set -g status on
+run set -g status-left ''
+run set -g status-right ''
+run set -g display-time 10000
+run set -g message-style 'fg=black,bg=yellow'
+run bind -n F2 display-message 'Ordinary tmux message'
+run set -s extended-keys-kitty on
+key f2
+wait 'Ordinary tmux message'
+capture ordinary-message
+type x
+wait 'Ctrl+Tab unavailable; reattach to retry'
+capture keyboard-failure-wide
+resize 40 12
+wait 0.1
+capture keyboard-failure-narrow
+type y
+wait 0.1
+capture input-preserved
