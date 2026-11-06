@@ -32,8 +32,13 @@ plus the shared foundations, without those sibling features.
   the complete glyph; its continuation cell cannot leak into the overlay, and
   the logical cursor still advances by its complete width so later visible
   cells retain their source columns.
-- `display-menu -N` selects on mouse press, ignores releases and drags, and
-  dismisses on a press outside the complete menu hierarchy.
+- `display-menu -N` selects on mouse press and dismisses on a press outside the
+  complete menu hierarchy. Releases and drags neither select nor dismiss.
+  Pointer events outside all visible menu boxes clear every row highlight,
+  including motion, drag, release and wheel events. These events leave the
+  hierarchy open; an outside press still dismisses it. Moving back onto a row
+  or navigating with the keyboard selects again; Enter with no selected row
+  retains its cancel behavior.
 - While a popup is open, wheel events outside its rectangle follow normal tmux
   routing to the pane under the pointer without closing the popup. The usual
   `WheelUpPane` or `WheelDownPane` binding receives the original coordinates;
@@ -41,6 +46,14 @@ plus the shared foundations, without those sibling features.
 
 Use `-M` when a menu opened by a non-mouse key binding should also accept mouse
 input. Menus opened from a mouse binding accept mouse input automatically.
+
+`regress/menu-hover-pty.py BINARY EVIDENCE` exercises pointer exit on all four
+sides, exterior drag/release/wheel, nested-menu re-entry, scrolling indicators
+and keyboard recovery on a private server. Run with `PYTHONPATH` pointing to
+`agent-sessions`, in both
+`--term xterm-256color` and `--term tmux-256color`. Captured HTML and cell
+assertions use a high-contrast selected style to distinguish a cleared highlight
+from an unchanged box. This deployed profile does not select optional `-R`.
 
 ## Nested argument format
 
