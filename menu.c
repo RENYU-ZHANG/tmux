@@ -584,6 +584,16 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 				return (1);
 			return (0);
 		}
+		/* All exterior pointer events end hover, not the hierarchy. */
+		if ((md->flags & MENU_CONTEXT) &&
+		    menu_level_at(md, m->x, m->y) < 0) {
+			for (i = 0; i <= md->depth; i++) {
+				if (md->levels[i].choice != MENU_CHOICE_NONE) {
+					md->levels[i].choice = MENU_CHOICE_NONE;
+					menu_redraw(c);
+				}
+			}
+		}
 		if (menu_mouse_wheel(event)) {
 			level = menu_level_at(md, m->x, m->y);
 			if (level >= 0) {
