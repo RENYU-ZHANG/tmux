@@ -1046,6 +1046,13 @@ struct menu {
 };
 typedef void (*menu_choice_cb)(struct menu *, u_int, key_code, void *);
 
+/* Optional row presentation; the consumer owns state and marker width. */
+struct menu_view_row {
+	const struct grid_cell *style;
+	const char *marker;
+};
+typedef void (*menu_view_row_cb)(u_int, struct menu_view_row *, void *);
+
 /* A borrowed flat list and its owned screen; input policy is external. */
 #define MENU_CHOICE_NONE -1
 #define MENU_CHOICE_UP -2
@@ -3483,6 +3490,9 @@ u_int		 menu_view_choice_row(struct menu_view *, int);
 void		 menu_view_draw(struct menu_view *, enum box_lines,
 		     const struct grid_cell *, const struct grid_cell *,
 		     const struct grid_cell *);
+void		 menu_view_draw_rows(struct menu_view *, enum box_lines,
+		     const struct grid_cell *, const struct grid_cell *,
+		     const struct grid_cell *, menu_view_row_cb, void *);
 #define MENU_NOMOUSE 0x1
 #define MENU_TAB 0x2
 #define MENU_STAYOPEN 0x4

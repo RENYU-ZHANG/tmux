@@ -155,13 +155,14 @@ menu_view_write(struct screen_write_ctx *ctx, struct menu *menu, int choice,
     u_int top, u_int visible, int arrow_up, int arrow_down,
     enum box_lines lines,
     const struct grid_cell *menu_gc, const struct grid_cell *border_gc,
-    const struct grid_cell *choice_gc)
+    const struct grid_cell *choice_gc, menu_view_row_cb row_cb, void *data)
 {
 	struct screen		*s = ctx->s;
 	struct grid_cell	 default_gc;
 	const struct grid_cell	*gc = &default_gc;
 	u_int			 cx, cy, i, j, row, width = menu->width;
 	const char		*name;
+	struct menu_view_row	 presentation;
 
 	cx = s->cx;
 	cy = s->cy;
@@ -196,6 +197,11 @@ menu_view_write(struct screen_write_ctx *ctx, struct menu *menu, int choice,
 
 		if (choice >= 0 && i == (u_int)choice && *name != '-')
 			gc = choice_gc;
+		presentation.style = gc;
+		presentation.marker = NULL;
+		if (row_cb != NULL && *name != '-')
+			row_cb(i, &presentation, data);
+		gc = presentation.style;
 
 		screen_write_cursormove(ctx, cx + 1, cy + 1 + row, 0);
 		for (j = 0; j < width + 2; j++)
@@ -210,6 +216,10 @@ menu_view_write(struct screen_write_ctx *ctx, struct menu *menu, int choice,
 		}
 
 		format_draw(ctx, gc, width, name, NULL, 0);
+		if (presentation.marker != NULL) {
+			screen_write_cursormove(ctx, cx + 1, cy + 1 + row, 0);
+			format_draw(ctx, gc, 1, presentation.marker, NULL, 0);
+		}
 		gc = &default_gc;
 	}
 	if (arrow_down) {
@@ -232,7 +242,7 @@ screen_write_menu(struct screen_write_ctx *ctx, struct menu *menu, int choice,
     const struct grid_cell *border_gc, const struct grid_cell *choice_gc)
 {
 	menu_view_write(ctx, menu, choice, 0, menu->count, 0, 0, lines,
-	    menu_gc, border_gc, choice_gc);
+	    menu_gc, border_gc, choice_gc, NULL, NULL);
 }
 
 void
@@ -240,12 +250,20 @@ menu_view_draw(struct menu_view *mv, enum box_lines lines,
     const struct grid_cell *menu_gc, const struct grid_cell *border_gc,
     const struct grid_cell *choice_gc)
 {
+	menu_view_draw_rows(mv, lines, menu_gc, border_gc, choice_gc, NULL, NULL);
+}
+
+void
+menu_view_draw_rows(struct menu_view *mv, enum box_lines lines,
+    const struct grid_cell *menu_gc, const struct grid_cell *border_gc,
+    const struct grid_cell *choice_gc, menu_view_row_cb row_cb, void *data)
+{
 	struct screen_write_ctx ctx;
 
 	screen_write_start(&ctx, &mv->s);
 	screen_write_clearscreen(&ctx, 8);
 	menu_view_write(&ctx, mv->menu, mv->choice, mv->top, mv->visible,
 	    menu_view_has_up(mv), menu_view_has_down(mv), lines, menu_gc,
-	    border_gc, choice_gc);
+	    border_gc, choice_gc, row_cb, data);
 	screen_write_stop(&ctx);
 }
