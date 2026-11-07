@@ -374,6 +374,15 @@ const struct options_table_entry options_table[] = {
 	  .text = "Default style of selected menu item."
 	},
 
+	{ .name = "menu-hover-style",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_WINDOW,
+	  .flags = OPTIONS_TABLE_IS_STYLE,
+	  .default_str = "bg=cyan,fg=black",
+	  .separator = ",",
+	  .text = "Transient hover style beside a pinned menu item."
+	},
+
 	{ .name = "menu-border-style",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_WINDOW,
