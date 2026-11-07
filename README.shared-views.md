@@ -39,3 +39,9 @@ The upstream `screen_write_menu` interface remains available for ordinary menus.
 
 Run `python3 regress/menu-view.py` for geometry, visibility, overflow-safe scrolling
 and lifetime checks under sanitizers, independent of either feature.
+
+`menu_view_draw_rows` accepts an optional per-item presentation callback. It can
+supply a row style and a one-cell marker in the existing left padding column;
+label positions, viewport geometry and the ordinary draw entry points stay the
+same. Disabled rows and separators keep their standard presentation. The
+consumer owns the state and chooses a marker supported by its client.
