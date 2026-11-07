@@ -116,8 +116,8 @@ with tempfile.TemporaryDirectory(prefix="tmux-menu-hover-") as directory:
             server.run("set", "-gu", "@chosen")
             # A whole nested hierarchy loses stale choices, not its boxes.
             client.key("f10")
-            # Start a real held-button gesture on a submenu, then leave it.
-            client.mouse("press", "left", *position(client.snapshot(), "Branch"))
+            # Open by hover; clicks now pin and have their own regression.
+            hover(client, "Branch")
             position(client.snapshot(), "Deeper")
             assert highlighted(capture(client, "nested-pressed"))
             for action in ("drag", "release"):

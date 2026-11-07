@@ -34,11 +34,22 @@ plus the shared foundations, without those sibling features.
   cells retain their source columns.
 - `display-menu -N` selects on mouse press and dismisses on a press outside the
   complete menu hierarchy. Releases and drags neither select nor dismiss.
-  Pointer events outside all visible menu boxes clear every row highlight,
-  including motion, drag, release and wheel events. These events leave the
-  hierarchy open; an outside press still dismisses it. Moving back onto a row
-  or navigating with the keyboard selects again; Enter with no selected row
+  Leaving an ordinary hovered row clears its highlight. An open parent stays
+  highlighted while the pointer traverses its descendants. Exterior motion,
+  drag, release and wheel events clear transient highlights and leave the
+  hierarchy open; an outside press dismisses it. Moving back onto a row or
+  navigating with the keyboard selects again; Enter with no selected row
   retains its cancel behavior.
+- A left press on a context-menu submenu parent pins its branch. The selected
+  highlight and `◆` in the fixed left marker column persist while hovering a
+  sibling; the sibling uses `menu-hover-style` (cyan by default) without
+  changing the branch or keyboard selection. Leaving clears that transient
+  hover; hovering the pinned parent keeps its selected appearance. Labels and
+  submenu arrows retain their columns. Non-UTF-8 clients use `*` as the marker.
+  Click the parent again to unpin, another parent to transfer the pin, a leaf
+  to execute it, or outside to dismiss. Descendants navigate normally and may
+  have their own pins. Left closes a child and releases its parent's pin;
+  scrolling a pinned parent waits until it is unpinned.
 - While a popup is open, wheel events outside its rectangle follow normal tmux
   routing to the pane under the pointer without closing the popup. The usual
   `WheelUpPane` or `WheelDownPane` binding receives the original coordinates;
@@ -54,6 +65,12 @@ and keyboard recovery on a private server. Run with `PYTHONPATH` pointing to
 `--term xterm-256color` and `--term tmux-256color`. Captured HTML and cell
 assertions use a high-contrast selected style to distinguish a cleared highlight
 from an unchanged box. This deployed profile does not select optional `-R`.
+
+`regress/menu-pins-pty.py BINARY EVIDENCE --no-reopen` verifies pin toggling/transfer,
+nested pins, distinct sibling hover, fixed label columns, keyboard navigation and
+dismissal on a private server. Run under both terminal modes; `--ascii` also checks
+the non-UTF-8 marker fallback. This profile adds pinning to the deployed hover-clearing
+profile without enabling the separately selectable right-press replacement feature.
 
 ## Nested argument format
 

@@ -4476,6 +4476,11 @@ See the
 section on how to specify
 .Ar style .
 Attributes are ignored.
+.It Ic menu-hover-style Ar style
+Set the transient sibling hover style while a context-menu parent is pinned.
+The default is black on cyan; the pinned row retains
+.Ic menu-selected-style .
+Attributes are ignored.
 .It Ic menu-border-style Ar style
 Set the menu border style.
 See the
@@ -6647,7 +6652,15 @@ key bindings do so.
 .Fl N
 enables context-menu mouse handling. Pointer motion changes the highlighted
 item, a left-button press chooses the item under the pointer, and a press
-outside dismisses the menu. Releases and button drags are ignored.
+outside dismisses the menu. Releases and button drags never choose an item.
+Leaving a hovered row clears its highlight; open parents stay highlighted while
+traversing their descendants. Clicking a submenu parent pins its branch and
+marks its fixed left padding column with a diamond (an asterisk for non-UTF-8
+clients). Sibling hover uses
+.Ic menu-hover-style
+without replacing that branch. Click again to unpin, another parent to transfer
+the pin, or a leaf to execute it. Left closes a child and releases its parent's
+pin. Wheel scrolling at a pinned parent resumes after unpinning.
 .Pp
 .Fl L
 enables nested menu arguments. A command of

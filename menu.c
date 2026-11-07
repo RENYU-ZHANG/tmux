@@ -30,11 +30,16 @@ struct menu_data {
 	struct grid_cell	 style;
 	struct grid_cell	 border_style;
 	struct grid_cell	 selected_style;
+	struct grid_cell	 hover_style;
 	enum box_lines		 border_lines;
 
 	struct cmd_find_state	 fs;
 	struct menu		*root;
 	struct menu_view	 levels[MENU_MAX_LEVELS];
+	int			 pinned[MENU_MAX_LEVELS];
+	int			 hovered[MENU_MAX_LEVELS];
+	int			 branch[MENU_MAX_LEVELS];
+	const char		*pin_marker;
 	u_int			 depth;
 
 	menu_choice_cb		 cb;
@@ -263,6 +268,9 @@ menu_level_init(struct menu_data *md, struct menu_view *ml,
 	    choice < 0 ? MENU_CHOICE_NONE : menu_find_choice(menu, choice, 1),
 	    px, py, c->tty.sx, c->tty.sy) != 0)
 		return (-1);
+	md->pinned[ml - md->levels] = MENU_CHOICE_NONE;
+	md->hovered[ml - md->levels] = MENU_CHOICE_NONE;
+	md->branch[ml - md->levels] = MENU_CHOICE_NONE;
 	if (~md->flags & MENU_NOMOUSE)
 		ml->s.mode |= (MODE_MOUSE_ALL|MODE_MOUSE_BUTTON);
 	ml->s.mode &= ~MODE_CURSOR;
@@ -280,8 +288,11 @@ menu_pop(struct menu_data *md, struct client *c, u_int depth)
 		changed = 1;
 	}
 	/* Repaint the pane/status cells uncovered by the removed child boxes. */
-	if (changed)
+	if (changed) {
+		md->branch[depth] = MENU_CHOICE_NONE;
+		md->pinned[depth] = MENU_CHOICE_NONE;
 		server_redraw_client(c);
+	}
 }
 
 static void
@@ -322,6 +333,7 @@ menu_open_submenu(struct menu_data *md, struct client *c)
 	child = &md->levels[md->depth + 1];
 	if (menu_level_init(md, child, submenu, 0, px, py, c) != 0)
 		return (0);
+	md->branch[md->depth] = parent->choice;
 	md->depth++;
 	menu_redraw(c);
 	return (1);
@@ -509,6 +521,37 @@ menu_draw_check_cb(__unused struct client *c, void *data, u_int px, u_int py,
 	}
 }
 
+static void
+menu_row_style(u_int row, struct menu_view_row *presentation, void *data)
+{
+	struct menu_draw_data *dd = data;
+	struct menu_data *md = dd->md;
+
+	if ((int)row == md->pinned[dd->depth]) {
+		presentation->style = &md->selected_style;
+		presentation->marker = md->pin_marker;
+	} else if ((int)row == md->hovered[dd->depth])
+		presentation->style = &md->hover_style;
+}
+
+/* Clear transient choices, retaining ancestors only along the pointer path. */
+static void
+menu_pointer_clear(struct menu_data *md, struct client *c, int level)
+{
+	u_int i;
+
+	for (i = 0; i <= md->depth; i++) {
+		md->hovered[i] = MENU_CHOICE_NONE;
+		if (md->pinned[i] >= 0)
+			md->levels[i].choice = md->pinned[i];
+		else if ((int)i < level)
+			md->levels[i].choice = md->branch[i];
+		else
+			md->levels[i].choice = MENU_CHOICE_NONE;
+	}
+	menu_redraw(c);
+}
+
 void
 menu_draw_cb(struct client *c, void *data,
     __unused struct screen_redraw_ctx *rctx)
@@ -529,8 +572,9 @@ menu_draw_cb(struct client *c, void *data,
 		c->overlay_data = &dd;
 		ml = &md->levels[depth];
 		s = &ml->s;
-		menu_view_draw(ml, md->border_lines, &md->style,
-		    &md->border_style, &md->selected_style);
+		menu_view_draw_rows(ml, md->border_lines, &md->style,
+		    &md->border_style, &md->selected_style,
+		    (md->flags & MENU_CONTEXT) ? menu_row_style : NULL, &dd);
 
 		for (i = 0; i < screen_size_y(s); i++) {
 			tty_draw_line(tty, s, 0, i, ml->menu->width + 4,
@@ -569,7 +613,7 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 	struct mouse_event		*m = &event->m;
 	u_int				 i, amount;
 	int				 count = menu->count, old = ml->choice;
-	int				 level;
+	int				 level, choice, pin;
 	const char			*name = NULL;
 	const struct menu_item		*item;
 	struct cmdq_state		*state;
@@ -582,19 +626,14 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 				return (1);
 			return (0);
 		}
-		/* All exterior pointer events end hover, not the hierarchy. */
 		if ((md->flags & MENU_CONTEXT) &&
-		    menu_level_at(md, m->x, m->y) < 0) {
-			for (i = 0; i <= md->depth; i++) {
-				if (md->levels[i].choice != MENU_CHOICE_NONE) {
-					md->levels[i].choice = MENU_CHOICE_NONE;
-					menu_redraw(c);
-				}
-			}
-		}
+		    menu_level_at(md, m->x, m->y) < 0)
+			menu_pointer_clear(md, c, -1);
 		if (menu_mouse_wheel(event)) {
 			level = menu_level_at(md, m->x, m->y);
 			if (level >= 0) {
+				if ((md->flags & MENU_CONTEXT) && md->pinned[level] >= 0)
+					return (0);
 				menu_pop(md, c, level);
 				ml = &md->levels[md->depth];
 				if (ml->choice < MENU_CHOICE_NONE)
@@ -608,17 +647,30 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 		if (md->flags & MENU_CONTEXT) {
 			if (menu_mouse_motion(event)) {
 				level = menu_level_at(md, m->x, m->y);
+				menu_pointer_clear(md, c, level);
 				if (level < 0)
 					return (0);
+				ml = &md->levels[level];
+				choice = menu_mouse_choice(ml, m->x, m->y);
+				if (md->pinned[level] >= 0) {
+					if (menu_item_enabled(ml->menu, choice))
+						md->hovered[level] = choice;
+					return (0);
+				}
+				/* Borders do not tear down the branch being crossed. */
+				if (choice == MENU_CHOICE_NONE)
+					return (0);
+				ml->choice = choice;
+				if (md->depth > (u_int)level &&
+				    md->branch[level] == choice)
+					return (0);
 				menu_pop(md, c, level);
-				ml = &md->levels[md->depth];
-				ml->choice = menu_mouse_choice(ml, m->x, m->y);
-				if (ml->choice >= 0 &&
-				    menu_item_enabled(ml->menu, ml->choice) &&
-				    ml->menu->submenus[ml->choice] != NULL)
-					menu_open_submenu(md, c);
-				else
-					menu_redraw(c);
+				if (choice >= 0 &&
+				    menu_item_enabled(ml->menu, choice) &&
+				    ml->menu->submenus[choice] != NULL) {
+					if (menu_open_submenu(md, c))
+						md->levels[md->depth].choice = MENU_CHOICE_NONE;
+				}
 				return (0);
 			}
 			if (menu_mouse_release(event) || menu_mouse_drag(event))
@@ -626,13 +678,31 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 			level = menu_level_at(md, m->x, m->y);
 			if (level < 0)
 				return (1);
-			menu_pop(md, c, level);
-			ml = &md->levels[md->depth];
-			menu = ml->menu;
-			ml->choice = menu_mouse_choice(ml, m->x, m->y);
-			if (ml->choice == MENU_CHOICE_NONE ||
-			    MOUSE_BUTTONS(m->b) != MOUSE_BUTTON_1)
+			if (MOUSE_BUTTONS(m->b) != MOUSE_BUTTON_1)
 				return (0);
+			ml = &md->levels[level];
+			menu = ml->menu;
+			choice = menu_mouse_choice(ml, m->x, m->y);
+			if (choice == MENU_CHOICE_NONE)
+				return (0);
+			if (menu_item_enabled(menu, choice) && menu->submenus[choice] != NULL) {
+				pin = md->pinned[level] == choice ? MENU_CHOICE_NONE : choice;
+				if (md->depth <= (u_int)level || md->branch[level] != choice) {
+					menu_pop(md, c, level);
+					ml->choice = choice;
+					if (!menu_open_submenu(md, c))
+						return (0);
+					md->levels[md->depth].choice = MENU_CHOICE_NONE;
+				}
+				md->pinned[level] = pin;
+				menu_pointer_clear(md, c, level);
+				ml->choice = choice;
+				return (0);
+			}
+			menu_pop(md, c, level);
+			ml->choice = choice;
+			md->pinned[level] = MENU_CHOICE_NONE;
+			md->hovered[level] = MENU_CHOICE_NONE;
 			goto chosen;
 		}
 		if (m->x < ml->px ||
@@ -666,6 +736,8 @@ menu_key_cb(struct client *c, void *data, struct key_event *event)
 			c->flags |= CLIENT_REDRAWOVERLAY;
 		return (0);
 	}
+	for (i = 0; i <= md->depth; i++)
+		md->hovered[i] = MENU_CHOICE_NONE;
 	for (i = 0; i < (u_int)count; i++) {
 		name = menu->items[i].name;
 		if (name == NULL || *name == '-')
@@ -842,6 +914,8 @@ menu_prepare(struct menu *menu, int flags, int starting_choice,
 	menu_set_style(c, &md->selected_style, selected_style,
 	    "menu-selected-style");
 	menu_set_style(c, &md->border_style, border_style, "menu-border-style");
+	menu_set_style(c, &md->hover_style, NULL, "menu-hover-style");
+	md->pin_marker = (c->flags & CLIENT_UTF8) ? "◆" : "*";
 
 	if (fs != NULL)
 		cmd_find_copy_state(&md->fs, fs);
